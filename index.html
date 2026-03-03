@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fuel-log v3</title>
+    <title>Fuel-log v4</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -22,8 +22,9 @@
         .tab.active { color: var(--accent); border-bottom: 3px solid var(--accent); font-weight: bold; }
         .month-header { background: var(--month-bar); padding: 10px 15px; border-left: 5px solid var(--accent); font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; margin-top: 15px; font-weight: bold; color: #01579b; }
         .card { background: white; padding: 15px; border-bottom: 1px solid #eee; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; position: relative; }
-        .card .date { grid-column: 1/3; font-weight: bold; color: #333; display: flex; justify-content: space-between; }
-        .card .actions { display: flex; gap: 15px; color: #aaa; }
+        .card .date { grid-column: 1/3; font-weight: bold; color: #333; display: flex; justify-content: space-between; align-items: center; }
+        .time-label { font-size: 0.75rem; color: #666; font-weight: normal; margin-left: 5px; }
+        .card .actions { display: flex; gap: 12px; color: #aaa; align-items: center; }
         .card .eff { text-align: right; color: #e67e22; font-weight: bold; font-size: 1.2rem; }
         .map-link { color: var(--map); text-decoration: none; font-size: 0.75rem; font-weight: bold; }
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto; }
@@ -53,7 +54,7 @@
     </div>
     <input type="text" id="memo" placeholder="メモ">
     <button class="btn-save" id="btn-submit" onclick="addRecord()">記録を保存する</button>
-    <button id="btn-cancel" style="display:none; background:#999; margin-top:5px;" class="btn-save" onclick="cancelEdit()">キャンセル</button>
+    <button id="btn-cancel" style="display:none; background:#999; margin-top:5px;" class="btn-save" onclick="cancelEdit()">修正を中止する</button>
 </div>
 
 <div id="list-container"></div>
@@ -73,7 +74,7 @@
 </div>
 
 <script>
-// ★Firebase設定
+// ★Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyBP_FmmHPoTKJ0c73syYfJGcf88JMca_aI",
   authDomain: "fuel-consumption-log-102e0.firebaseapp.com",
@@ -97,10 +98,9 @@ function init() {
     loadRecords();
 }
 
-// 現在地取得のPromise化
 function getPosition() {
     return new Promise((resolve) => {
-        navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), {timeout: 5000});
+        navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), {timeout: 6000});
     });
 }
 
@@ -110,20 +110,26 @@ async function addRecord() {
     const p = parseFloat(document.getElementById('price').value);
     const m = document.getElementById('memo').value;
     const editId = document.getElementById('edit-id').value;
-    if(!d || !f || !p) return alert("入力不足");
+    if(!d || !f || !p) return alert("数値を入力してください");
 
-    // 位置情報の取得（新規登録時のみ）
-    let loc = null;
-    if(!editId) {
+    if(editId) {
+        // 【修正時】距離、給油量、金額、メモのみを更新（日付と位置情報は維持）
+        await db.collection("records").doc(editId).update({
+            dist: d, fuel: f, price: p, memo: m
+        });
+    } else {
+        // 【新規登録時】全ての情報（日付、位置情報含む）を取得して保存
+        let loc = null;
         const pos = await getPosition();
         if(pos) loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+
+        await db.collection("records").add({
+            carId: currentCarIndex,
+            dist: d, fuel: f, price: p, memo: m,
+            loc: loc,
+            date: firebase.firestore.FieldValue.serverTimestamp()
+        });
     }
-
-    const data = { carId: currentCarIndex, dist: d, fuel: f, price: p, memo: m, date: firebase.firestore.FieldValue.serverTimestamp() };
-    if(loc) data.loc = loc;
-
-    if(editId) { await db.collection("records").doc(editId).update(data); cancelEdit(); }
-    else { await db.collection("records").add(data); }
     loadRecords(); cancelEdit();
 }
 
@@ -133,12 +139,19 @@ async function loadRecords() {
     let html = ""; let curM = ""; let mF = 0; let mP = 0; let mC = "";
     let tF = 0; let tP = 0; let maxD = 0; let minD = 0;
     const docs = snap.docs;
-    if(docs.length === 0) { listDiv.innerHTML = "記録なし"; checkAlarm(0); return; }
+    if(docs.length === 0) { listDiv.innerHTML = "<p style='text-align:center;padding:20px;'>記録がありません</p>"; checkAlarm(0); return; }
 
     docs.forEach((doc, i) => {
-        const d = doc.data(); const dt = d.date ? d.date.toDate() : new Date();
+        const d = doc.data(); 
+        const dt = d.date ? d.date.toDate() : new Date();
+        
+        // 24時間表記の時間文字列作成
+        const timeStr = dt.getHours().toString().padStart(2, '0') + ":" + dt.getMinutes().toString().padStart(2, '0');
         const mS = `${dt.getFullYear()}年${dt.getMonth()+1}月`;
-        let eff = "---"; if(i < docs.length - 1) eff = ((d.dist - docs[i+1].data().dist) / d.fuel).toFixed(2);
+        
+        let eff = "---"; 
+        if(i < docs.length - 1) eff = ((d.dist - docs[i+1].data().dist) / d.fuel).toFixed(2);
+        
         if (curM !== "" && curM !== mS) { html += renderMS(curM, mF, mP, mC); mF = 0; mP = 0; mC = ""; }
         curM = mS; mF += d.fuel; mP += d.price; tF += d.fuel; tP += d.price;
         if(i === 0) maxD = d.dist; minD = d.dist;
@@ -147,20 +160,21 @@ async function loadRecords() {
         if(d.loc) mapBtn = `<a class="map-link" href="https://www.google.com/maps?q=${d.loc.lat},${d.loc.lng}" target="_blank"><i class="fas fa-map-marker-alt"></i> マップ</a>`;
 
         mC += `<div class="card">
-                <div class="date">${dt.getMonth()+1}/${dt.getDate()} <span>${d.memo||''}</span>
+                <div class="date">
+                    <div>${dt.getMonth()+1}/${dt.getDate()}<span class="time-label">${timeStr}</span></div>
                     <div class="actions">
                         ${mapBtn}
                         <i class="fas fa-edit" onclick="editMode('${doc.id}',${d.dist},${d.fuel},${d.price},'${d.memo||''}')"></i>
                         <i class="fas fa-trash" onclick="deleteRecord('${doc.id}')"></i>
                     </div>
                 </div>
-                <div style="grid-column:1/3;font-size:0.8rem;color:#888;">${d.dist} km</div>
-                <div>${d.fuel}L / ¥${d.price}</div>
-                <div class="eff">${eff}</div>
+                <div style="grid-column:1/3;font-size:0.8rem;color:#888;">累計: ${d.dist.toLocaleString()} km <span style="margin-left:10px;color:#999;">${d.memo||''}</span></div>
+                <div>${d.fuel}L / ¥${d.price.toLocaleString()}</div>
+                <div class="eff">${eff} <small style="font-size:0.6rem;">km/L</small></div>
               </div>`;
     });
     html += renderMS(curM, mF, mP, mC); listDiv.innerHTML = html;
-    document.getElementById('stats-area').innerHTML = `生涯燃費: ${(tF>0?((maxD-minD)/tF).toFixed(2):0)} km/L<br>累計支出: ¥${tP.toLocaleString()}`;
+    document.getElementById('stats-area').innerHTML = `生涯燃費: ${(tF>0?((maxD-minD)/tF).toFixed(2):0)} km/L<br>累計支出: ¥${tP.toLocaleString()}<br>累計給油: ${tF.toFixed(1)} L`;
     checkAlarm(maxD);
 }
 
@@ -168,24 +182,46 @@ function renderMS(t, f, p, c) { return `<div class="month-header"><span>${t}</sp
 
 async function exportCSV() {
     const snap = await db.collection("records").orderBy("date", "asc").get();
-    let csv = "日付,車両名,走行距離,給油量,金額,燃費,単価,メモ\n";
+    let csv = "日付,時間,車両名,走行距離,給油量,金額,燃費,単価,メモ\n";
     let lasts = {};
     snap.forEach(doc => {
-        const d = doc.data(); const dt = d.date ? d.date.toDate().toLocaleDateString('ja-JP') : "";
+        const d = doc.data(); const dt = d.date ? d.date.toDate() : new Date();
+        const dStr = dt.toLocaleDateString('ja-JP');
+        const tStr = dt.getHours().toString().padStart(2, '0') + ":" + dt.getMinutes().toString().padStart(2, '0');
         let eff = "---"; if (lasts[d.carId]) eff = ((d.dist - lasts[d.carId]) / d.fuel).toFixed(2);
         lasts[d.carId] = d.dist;
-        csv += `${dt},${carNames[d.carId]},${d.dist},${d.fuel},${d.price},${eff},${Math.round(d.price/d.fuel)},${d.memo||""}\n`;
+        csv += `${dStr},${tStr},${carNames[d.carId]},${d.dist},${d.fuel},${d.price},${eff},${Math.round(d.price/d.fuel)},${d.memo||""}\n`;
     });
-    window.location.href = `mailto:?subject=燃費ログ&body=${encodeURIComponent(csv)}`;
+    window.location.href = `mailto:?subject=燃費ログバックアップ&body=${encodeURIComponent(csv)}`;
 }
 
-function editMode(id, d, f, p, m) { document.getElementById('edit-id').value = id; document.getElementById('dist').value = d; document.getElementById('fuel').value = f; document.getElementById('price').value = p; document.getElementById('memo').value = m; document.getElementById('btn-submit').innerText = "修正"; document.getElementById('btn-cancel').style.display = "block"; window.scrollTo(0,0); }
-function cancelEdit() { document.getElementById('edit-id').value = ""; document.querySelectorAll('.form-box input').forEach(i => i.value = ""); document.getElementById('btn-submit').innerText = "保存"; document.getElementById('btn-cancel').style.display = "none"; }
-async function deleteRecord(id) { if(confirm("削除？")) { await db.collection("records").doc(id).delete(); loadRecords(); } }
+function editMode(id, d, f, p, m) { 
+    document.getElementById('edit-id').value = id; 
+    document.getElementById('dist').value = d; 
+    document.getElementById('fuel').value = f; 
+    document.getElementById('price').value = p; 
+    document.getElementById('memo').value = m; 
+    document.getElementById('btn-submit').innerText = "修正内容を保存"; 
+    document.getElementById('btn-cancel').style.display = "block"; 
+    window.scrollTo(0,0); 
+}
+
+function cancelEdit() { 
+    document.getElementById('edit-id').value = ""; 
+    document.querySelectorAll('.form-box input').forEach(i => i.value = ""); 
+    document.getElementById('btn-submit').innerText = "記録を保存する"; 
+    document.getElementById('btn-cancel').style.display = "none"; 
+}
+
+async function deleteRecord(id) { if(confirm("この記録を削除しますか？")) { await db.collection("records").doc(id).delete(); loadRecords(); } }
 function updateAlarm(v) { alarms[currentCarIndex] = parseFloat(v)||0; localStorage.setItem('alarms', JSON.stringify(alarms)); loadRecords(); }
 function checkAlarm(d) { const l = alarms[currentCarIndex]; const b = document.getElementById('alarm-banner'); b.style.display = (l>0 && d>=l) ? "block" : "none"; }
 function switchCar(i) { currentCarIndex = i; cancelEdit(); document.getElementById('alarm-input').value = alarms[i]||""; renderTabs(); loadRecords(); }
-function renderTabs() { document.getElementById('car-tabs').innerHTML = carNames.map((n, i) => `<div class="tab ${i===currentCarIndex?'active':''}" onclick="switchCar(${i})">${n}</div>`).join(''); document.getElementById('current-car-display').innerText = carNames[currentCarIndex]; document.querySelectorAll('.car-label').forEach(e => e.innerText = carNames[currentCarIndex]); }
+function renderTabs() { 
+    document.getElementById('car-tabs').innerHTML = carNames.map((n, i) => `<div class="tab ${i===currentCarIndex?'active':''}" onclick="switchCar(${i})">${n}</div>`).join(''); 
+    document.getElementById('current-car-display').innerText = carNames[currentCarIndex]; 
+    document.querySelectorAll('.car-label').forEach(e => e.innerText = carNames[currentCarIndex]); 
+}
 function renderNameSettings() { document.getElementById('car-names-input').innerHTML = carNames.map((n, i) => `<div>車${i+1}: <input type="text" value="${n}" onchange="updateCN(${i},this.value)"></div>`).join(''); }
 function updateCN(i, v) { carNames[i] = v; localStorage.setItem('carNames', JSON.stringify(carNames)); renderTabs(); }
 function toggleModal() { const m = document.getElementById('modal'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; }
