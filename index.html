@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>燃費ログ Cloud</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --main: #2c3e50; --accent: #3498db; --month-bar: #e3f2fd; }
+        body { font-family: -apple-system, sans-serif; margin: 0; background: #f0f2f5; padding-bottom: 50px; }
+        header { background: var(--main); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        
+        /* 入力エリア */
+        .form-box { background: white; margin: 10px; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .form-box input { width: 100%; padding: 12px; margin: 5px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        .btn-save { background: var(--accent); color: white; border: none; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; margin-top: 10px; }
+
+        /* 月別ヘッダー */
+        .month-header { background: var(--month-bar); padding: 10px 15px; border-left: 5px solid var(--accent); font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+        .month-total { text-align: right; color: #555; }
+
+        /* 記録カード */
+        .card { background: white; padding: 15px; border-bottom: 1px solid #eee; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+        .card .date { grid-column: 1/3; font-weight: bold; color: #333; margin-bottom: 4px; }
+        .card .dist { font-size: 0.8rem; color: #888; grid-column: 1/3; margin-bottom: 8px; }
+        .card .val { font-size: 0.95rem; }
+        .card .eff { text-align: right; color: #e67e22; font-weight: bold; font-size: 1.1rem; }
+        .card .unit { font-size: 0.75rem; color: #999; text-align: right; }
+
+        /* 設定モーダル */
+        #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto; }
+        .modal-content { background: white; margin: 20px; padding: 20px; border-radius: 15px; }
+        
+        .tab-bar { display: flex; overflow-x: auto; background: #fff; border-bottom: 1px solid #ddd; }
+        .tab { padding: 12px 20px; white-space: nowrap; cursor: pointer; color: #888; }
+        .tab.active { color: var(--accent); border-bottom: 3px solid var(--accent); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div id="current-car-display">車1</div>
+    <button onclick="toggleModal()" style="background:none; border:none; color:white; font-size: 1.4rem;"><i class="fas fa-cog"></i></button>
+</header>
+
+<div class="tab-bar" id="car-tabs">
+    <div class="tab active" onclick="switchCar(0)">車1</div>
+    <div class="tab" onclick="switchCar(1)">車2</div>
+    <div class="tab" onclick="switchCar(2)">車3</div>
+    <div class="tab" onclick="switchCar(3)">車4</div>
+    <div class="tab" onclick="switchCar(4)">車5</div>
+</div>
+
+<div class="form-box">
+    <input type="number" id="dist" placeholder="現在の走行距離 (km)" inputmode="decimal">
+    <div style="display:flex; gap:10px;">
+        <input type="number" id="fuel" placeholder="給油量 (L)" inputmode="decimal">
+        <input type="number" id="price" placeholder="金額 (円)" inputmode="numeric">
+    </div>
+    <input type="text" id="memo" placeholder="メモ（任意）">
+    <button class="btn-save" onclick="addRecord()">記録を保存する</button>
+</div>
+
+<div id="list-container"></div>
+
+<div id="modal">
+    <div class="modal-content">
+        <h3><i class="fas fa-car"></i> 車両名の設定</h3>
+        <div id="car-names-input"></div>
+        <hr>
+        <button class="btn-save" style="background:#666;" onclick="exportCSV()">データをメールで送る (CSV)</button>
+        <button class="btn-save" style="background:#e74c3c; margin-top:20px;" onclick="toggleModal()">閉じる</button>
+    </div>
+</div>
+
+<script>
+// ★ここにコピーしたConfigを貼り付けます
+const firebaseConfig = {
+  apiKey: "AIzaSyBP_FmmHPoTKJ0c73syYfJGcf88JMca_aI",
+  authDomain: "fuel-consumption-log-102e0.firebaseapp.com",
+  projectId: "fuel-consumption-log-102e0",
+  storageBucket: "fuel-consumption-log-102e0.firebasestorage.app",
+  messagingSenderId: "662071411255",
+  appId: "1:662071411255:web:f907cbf3dbd0920bb175b2",
+  measurementId: "G-NWNNFXQDE2"
+};
+
+// 初期化
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let currentCarIndex = 0;
+let carNames = JSON.parse(localStorage.getItem('carNames')) || ["車1", "車2", "車3", "車4", "車5"];
+
+function init() {
+    renderTabs();
+    loadRecords();
+    renderNameSettings();
+}
+
+function renderTabs() {
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach((tab, i) => {
+        tab.innerText = carNames[i];
+        tab.className = i === currentCarIndex ? 'tab active' : 'tab';
+    });
+    document.getElementById('current-car-display').innerText = carNames[currentCarIndex];
+}
+
+async function addRecord() {
+    const d = parseFloat(document.getElementById('dist').value);
+    const f = parseFloat(document.getElementById('fuel').value);
+    const p = parseFloat(document.getElementById('price').value);
+    if(!d || !f || !p) return alert("入力してください");
+
+    await db.collection("records").add({
+        carId: currentCarIndex,
+        dist: d,
+        fuel: f,
+        price: p,
+        memo: document.getElementById('memo').value,
+        date: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    
+    document.querySelectorAll('input').forEach(i => i.value = "");
+    loadRecords();
+}
+
+async function loadRecords() {
+    const snap = await db.collection("records")
+        .where("carId", "==", currentCarIndex)
+        .orderBy("date", "desc").get();
+    
+    let html = "";
+    let currentMonth = "";
+    let mFuel = 0, mPrice = 0;
+    let tempHtml = "";
+    let lastDist = null;
+
+    const docs = snap.docs.map(d => d.data());
+    
+    docs.forEach((data, i) => {
+        const date = data.date ? data.date.toDate() : new Date();
+        const mStr = `${date.getFullYear()}年${date.getMonth() + 1}月`;
+        
+        // 燃費計算（次のインデックス＝前回データ）
+        let eff = "---";
+        if(i < docs.length - 1) {
+            const prevDist = docs[i+1].dist;
+            eff = ((data.dist - prevDist) / data.fuel).toFixed(2);
+        }
+
+        if (currentMonth !== mStr && currentMonth !== "") {
+            html += `<div class="month-header"><span>${currentMonth}</span><div class="month-total">計 ${mFuel.toFixed(1)}L<br>¥${mPrice.toLocaleString()}</div></div>` + tempHtml;
+            tempHtml = ""; mFuel = 0; mPrice = 0;
+        }
+
+        currentMonth = mStr;
+        mFuel += data.fuel;
+        mPrice += data.price;
+
+        tempHtml += `
+            <div class="card">
+                <div class="date">${date.toLocaleDateString()} <span style="font-weight:normal; font-size:0.7rem;">${data.memo || ''}</span></div>
+                <div class="dist">累計: ${data.dist.toLocaleString()} km</div>
+                <div class="val">${data.fuel}L / ${data.price.toLocaleString()}円</div>
+                <div class="eff">${eff} <small style="font-size:0.6rem">km/L</small></div>
+                <div class="unit">単価: ¥${Math.round(data.price/data.fuel)}/L</div>
+            </div>`;
+    });
+    html += `<div class="month-header"><span>${currentMonth}</span><div class="month-total">計 ${mFuel.toFixed(1)}L<br>¥${mPrice.toLocaleString()}</div></div>` + tempHtml;
+    document.getElementById('list-container').innerHTML = html;
+}
+
+function switchCar(idx) { currentCarIndex = idx; renderTabs(); loadRecords(); }
+function toggleModal() { const m = document.getElementById('modal'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; }
+
+function renderNameSettings() {
+    let h = "";
+    carNames.forEach((n, i) => {
+        h += `<input type="text" value="${n}" onchange="updateCarName(${i}, this.value)">`;
+    });
+    document.getElementById('car-names-input').innerHTML = h;
+}
+
+function updateCarName(i, val) {
+    carNames[i] = val;
+    localStorage.setItem('carNames', JSON.stringify(carNames));
+    renderTabs();
+}
+
+function exportCSV() {
+    alert("この機能はFirebaseから全データを取得してCSV化するロジックを次に追加できます！");
+}
+
+init();
+</script>
+</body>
+</html>
