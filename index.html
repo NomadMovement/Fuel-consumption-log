@@ -112,24 +112,75 @@ async function addRecord() {
 
 async function loadRecords() {
     const listDiv = document.getElementById('list-container');
-    const snap = await db.collection("records").where("carId", "==", currentCarIndex).orderBy("date", "desc").get();
-    let html = ""; let curM = ""; let mF = 0; let mP = 0; let mC = "";
-    let tF = 0; let tP = 0; let maxD = 0; let minD = 0;
+    const snap = await db.collection("records")
+        .where("carId", "==", currentCarIndex)
+        .orderBy("date", "desc").get();
+    
+    let fullHtml = ""; let currentMonth = "";
+    let mFuel = 0; let mPrice = 0; let monthCards = "";
     const docs = snap.docs;
-    if(docs.length === 0) { listDiv.innerHTML = "記録なし"; checkAlarm(0); return; }
+
+    if(docs.length === 0) {
+        listDiv.innerHTML = "<p style='text-align:center; padding:20px;'>記録がありません</p>";
+        return;
+    }
 
     docs.forEach((doc, i) => {
-        const d = doc.data(); const dt = d.date ? d.date.toDate() : new Date();
-        const mS = `${dt.getFullYear()}年${dt.getMonth()+1}月`;
-        let eff = "---"; if(i < docs.length - 1) eff = ((d.dist - docs[i+1].data().dist) / d.fuel).toFixed(2);
-        if (curM !== "" && curM !== mS) { html += renderMS(curM, mF, mP, mC); mF = 0; mP = 0; mC = ""; }
-        curM = mS; mF += d.fuel; mP += d.price; tF += d.fuel; tP += d.price;
-        if(i === 0) maxD = d.dist; minD = d.dist;
-        mC += `<div class="card"><div class="date">${dt.getMonth()+1}/${dt.getDate()} <span>${d.memo||''}</span><div class="actions"><i class="fas fa-edit" onclick="editMode('${doc.id}',${d.dist},${d.fuel},${d.price},'${d.memo||''}')"></i><i class="fas fa-trash" onclick="deleteRecord('${doc.id}')"></i></div></div><div style="grid-column:1/3;font-size:0.8rem;color:#888;">${d.dist} km</div><div>${d.fuel}L / ¥${d.price}</div><div class="eff">${eff}</div></div>`;
+        const data = doc.data();
+        const date = data.date ? data.date.toDate() : new Date();
+        
+        // --- 1. 時間を24時間方式で表示 (HH:mm) ---
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const timeStr = `${hours}:${minutes}`;
+        const dateStr = `${date.getMonth() + 1}/${date.getDate()} ${timeStr}`;
+
+        const monthStr = `${date.getFullYear()}年${date.getMonth() + 1}月`;
+        
+        // --- 2. 前回からの走行距離 & 燃費の計算 ---
+        let eff = "---";
+        let diffDistStr = ""; // カッコ内の走行距離用
+        if(i < docs.length - 1) {
+            const prevDist = docs[i+1].data().dist;
+            const diffDist = data.dist - prevDist; // 前回からの走行距離
+            if(diffDist > 0) {
+                eff = (diffDist / data.fuel).toFixed(2);
+                diffDistStr = ` (${diffDist} km走行)`; 
+            }
+        }
+
+        // --- 3. 単価の計算 ---
+        const unitPrice = Math.round(data.price / data.fuel);
+
+        if (currentMonth !== "" && currentMonth !== monthStr) {
+            fullHtml += renderMonthSection(currentMonth, mFuel, mPrice, monthCards);
+            mFuel = 0; mPrice = 0; monthCards = "";
+        }
+
+        currentMonth = monthStr;
+        mFuel += data.fuel;
+        mPrice += data.price;
+
+        // --- 4. HTMLの組み立て ---
+        monthCards += `
+            <div class="card">
+                <div class="date">
+                    ${dateStr} <span>${data.memo || ''}</span>
+                    <div class="actions">
+                        <i class="fas fa-edit" onclick="editMode('${doc.id}', ${data.dist}, ${data.fuel}, ${data.price}, '${data.memo || ''}')"></i>
+                        <i class="fas fa-trash" onclick="deleteRecord('${doc.id}')"></i>
+                    </div>
+                </div>
+                <div style="grid-column: 1/3; font-size: 0.8rem; color: #888;">
+                    累計: ${data.dist.toLocaleString()} km ${diffDistStr}
+                </div>
+                <div>${data.fuel} L / ¥${data.price.toLocaleString()} (¥${unitPrice}/L)</div>
+                <div class="eff">${eff} <small>燃費(km/L)</small></div>
+            </div>`;
     });
-    html += renderMS(curM, mF, mP, mC); listDiv.innerHTML = html;
-    document.getElementById('stats-area').innerHTML = `生涯燃費: ${(tF>0?((maxD-minD)/tF).toFixed(2):0)} km/L<br>累計支出: ¥${tP.toLocaleString()}`;
-    checkAlarm(maxD);
+
+    fullHtml += renderMonthSection(currentMonth, mFuel, mPrice, monthCards);
+    listDiv.innerHTML = fullHtml;
 }
 
 function renderMS(t, f, p, c) { return `<div class="month-header"><span>${t}</span><div>計 ${f.toFixed(1)}L / ¥${p.toLocaleString()}</div></div>${c}`; }
