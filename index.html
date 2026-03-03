@@ -8,65 +8,65 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        :root { --main: #2c3e50; --accent: #3498db; --month-bar: #e3f2fd; }
+        :root { --main: #2c3e50; --accent: #3498db; --month-bar: #e3f2fd; --warn: #e74c3c; }
         body { font-family: -apple-system, sans-serif; margin: 0; background: #f0f2f5; padding-bottom: 50px; }
         header { background: var(--main); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        .alert-bar { background: var(--warn); color: white; padding: 10px; text-align: center; font-weight: bold; font-size: 0.9rem; display: none; }
         .form-box { background: white; margin: 10px; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .form-box input { width: 100%; padding: 12px; margin: 5px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
         .btn-save { background: var(--accent); color: white; border: none; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; margin-top: 10px; }
         .tab-bar { display: flex; overflow-x: auto; background: #fff; border-bottom: 1px solid #ddd; }
         .tab { padding: 12px 20px; white-space: nowrap; cursor: pointer; color: #888; border-bottom: 3px solid transparent; }
         .tab.active { color: var(--accent); border-bottom: 3px solid var(--accent); font-weight: bold; }
-        
-        /* 月別ヘッダー */
         .month-header { background: var(--month-bar); padding: 10px 15px; border-left: 5px solid var(--accent); font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; margin-top: 15px; font-weight: bold; color: #01579b; }
-        .month-total { text-align: right; line-height: 1.4; }
-
-        /* 記録カード */
-        .card { background: white; padding: 15px; border-bottom: 1px solid #eee; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-        .card .date { grid-column: 1/3; font-weight: bold; color: #333; margin-bottom: 4px; display: flex; justify-content: space-between; }
-        .card .dist-info { font-size: 0.8rem; color: #888; grid-column: 1/3; margin-bottom: 8px; }
-        .card .val { font-size: 0.95rem; font-weight: 500; }
+        .card { background: white; padding: 15px; border-bottom: 1px solid #eee; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; position: relative; }
+        .card .date { grid-column: 1/3; font-weight: bold; color: #333; display: flex; justify-content: space-between; align-items: flex-start; }
+        .card .actions { display: flex; gap: 15px; color: #aaa; font-size: 1.1rem; }
         .card .eff { text-align: right; color: #e67e22; font-weight: bold; font-size: 1.2rem; }
-        .card .unit { font-size: 0.75rem; color: #999; text-align: right; grid-column: 2/3; }
-
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto; }
         .modal-content { background: white; margin: 20px; padding: 20px; border-radius: 15px; }
+        .stats-box { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 10px; font-size: 0.9rem; line-height: 1.6; }
     </style>
 </head>
 <body>
 
 <header>
-    <div id="current-car-display">車1</div>
+    <div id="current-car-display">読み込み中...</div>
     <button onclick="toggleModal()" style="background:none; border:none; color:white; font-size: 1.4rem;"><i class="fas fa-cog"></i></button>
 </header>
 
-<div class="tab-bar" id="car-tabs">
-    <div class="tab active" onclick="switchCar(0)">車1</div>
-    <div class="tab" onclick="switchCar(1)">車2</div>
-    <div class="tab" onclick="switchCar(2)">車3</div>
-    <div class="tab" onclick="switchCar(3)">車4</div>
-    <div class="tab" onclick="switchCar(4)">車5</div>
+<div id="alarm-banner" class="alert-bar">
+    <i class="fas fa-exclamation-triangle"></i> <span id="alarm-text">メンテナンス時期です！</span>
 </div>
 
+<div class="tab-bar" id="car-tabs"></div>
+
 <div class="form-box">
+    <input type="hidden" id="edit-id">
     <input type="number" id="dist" placeholder="現在の走行距離 (km)" inputmode="decimal">
     <div style="display:flex; gap:10px;">
         <input type="number" id="fuel" placeholder="給油量 (L)" inputmode="decimal">
         <input type="number" id="price" placeholder="合計金額 (円)" inputmode="numeric">
     </div>
     <input type="text" id="memo" placeholder="メモ（任意）">
-    <button class="btn-save" onclick="addRecord()">記録を保存する</button>
+    <button class="btn-save" id="btn-submit" onclick="addRecord()">記録を保存する</button>
+    <button id="btn-cancel" style="display:none; background:#999; margin-top:5px;" class="btn-save" onclick="cancelEdit()">編集をキャンセル</button>
 </div>
 
 <div id="list-container"></div>
 
 <div id="modal">
     <div class="modal-content">
+        <h3><i class="fas fa-chart-bar"></i> 統計情報 (<span class="car-name-label"></span>)</h3>
+        <div id="stats-area" class="stats-box">データがありません</div>
+
+        <h3><i class="fas fa-bell"></i> アラーム設定 (km)</h3>
+        <input type="number" id="alarm-input" placeholder="例: 30000kmで通知" style="width:100%; padding:10px;" onchange="updateAlarm(this.value)">
+        <p style="font-size:0.7rem; color:#666;">※累計走行距離がこれを超えると警告が出ます</p>
+
         <h3><i class="fas fa-car"></i> 車両名の設定</h3>
         <div id="car-names-input"></div>
         <hr>
-        <button class="btn-save" style="background:#666;" onclick="exportCSV()">CSV出力（準備中）</button>
         <button class="btn-save" style="background:#e74c3c; margin-top:20px;" onclick="toggleModal()">閉じる</button>
     </div>
 </div>
@@ -83,16 +83,17 @@ const firebaseConfig = {
   measurementId: "G-NWNNFXQDE2"
 };
 
-// 初期化
-if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 let currentCarIndex = 0;
-let carNames = JSON.parse(localStorage.getItem('carNames')) || ["車1", "車2", "車3", "車4", "車5"];
+let carNames = JSON.parse(localStorage.getItem('carNames')) || ["車体名1", "車体名2", "車体名3", "車体名4", "車体名5"];
+let alarms = JSON.parse(localStorage.getItem('alarms')) || [0, 0, 0, 0, 0];
 
 function init() {
     renderTabs();
     renderNameSettings();
+    document.getElementById('alarm-input').value = alarms[currentCarIndex] || "";
     loadRecords();
 }
 
@@ -101,17 +102,22 @@ async function addRecord() {
     const f = parseFloat(document.getElementById('fuel').value);
     const p = parseFloat(document.getElementById('price').value);
     const m = document.getElementById('memo').value;
+    const editId = document.getElementById('edit-id').value;
 
     if(!d || !f || !p) return alert("数値を入力してください");
 
-    await db.collection("records").add({
+    const payload = {
         carId: currentCarIndex,
-        dist: d,
-        fuel: f,
-        price: p,
-        memo: m,
+        dist: d, fuel: f, price: p, memo: m,
         date: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    };
+
+    if(editId) {
+        await db.collection("records").doc(editId).update(payload);
+        cancelEdit();
+    } else {
+        await db.collection("records").add(payload);
+    }
     
     document.querySelectorAll('.form-box input').forEach(i => i.value = "");
     loadRecords();
@@ -125,76 +131,129 @@ async function loadRecords() {
         .where("carId", "==", currentCarIndex)
         .orderBy("date", "desc").get();
     
-    let fullHtml = "";
-    let currentMonth = "";
-    let mFuel = 0, mPrice = 0;
-    let monthCards = "";
+    let fullHtml = ""; let currentMonth = "";
+    let mFuel = 0; let mPrice = 0; let monthCards = "";
+    let totalFuel = 0; let totalPrice = 0; let maxDist = 0; let minDist = 0;
 
-    const docs = snap.docs.map(d => d.data());
+    const docs = snap.docs;
 
     if(docs.length === 0) {
         listDiv.innerHTML = "<p style='text-align:center; padding:20px;'>記録がありません</p>";
+        checkAlarm(0);
         return;
     }
 
-    docs.forEach((data, i) => {
+    docs.forEach((doc, i) => {
+        const data = doc.data();
         const date = data.date ? data.date.toDate() : new Date();
         const mStr = `${date.getFullYear()}年${date.getMonth() + 1}月`;
         
-        // 燃費計算（1つ後のインデックス＝前回のデータ）
         let eff = "---";
         if(i < docs.length - 1) {
-            const prevDist = docs[i+1].dist;
+            const prevDist = docs[i+1].data().dist;
             const diff = data.dist - prevDist;
             if(diff > 0) eff = (diff / data.fuel).toFixed(2);
         }
 
-        // 月が変わった時の集計処理
         if (currentMonth !== "" && currentMonth !== mStr) {
             fullHtml += renderMonthSection(currentMonth, mFuel, mPrice, monthCards);
             mFuel = 0; mPrice = 0; monthCards = "";
         }
 
         currentMonth = mStr;
-        mFuel += data.fuel;
-        mPrice += data.price;
+        mFuel += data.fuel; mPrice += data.price;
+        totalFuel += data.fuel; totalPrice += data.price;
+        if(i === 0) maxDist = data.dist;
+        minDist = data.dist;
 
         monthCards += `
             <div class="card">
-                <div class="date">${date.getMonth()+1}/${date.getDate()} <span>${data.memo || ''}</span></div>
-                <div class="dist-info">累計: ${data.dist.toLocaleString()} km</div>
-                <div class="val">${data.fuel}L / ¥${data.price.toLocaleString()}</div>
+                <div class="date">
+                    ${date.getMonth()+1}/${date.getDate()} <span style="font-weight:normal; font-size:0.7rem; color:#999;">${data.memo || ''}</span>
+                    <div class="actions">
+                        <i class="fas fa-edit" onclick="editMode('${doc.id}', ${data.dist}, ${data.fuel}, ${data.price}, '${data.memo || ''}')"></i>
+                        <i class="fas fa-trash" onclick="deleteRecord('${doc.id}')"></i>
+                    </div>
+                </div>
+                <div style="font-size:0.8rem; color:#888; grid-column:1/3;">累計: ${data.dist.toLocaleString()} km</div>
+                <div style="font-size:0.95rem;">${data.fuel}L / ¥${data.price.toLocaleString()}</div>
                 <div class="eff">${eff} <small>km/L</small></div>
-                <div class="unit">単価: ¥${Math.round(data.price/data.fuel)}/L</div>
             </div>`;
     });
 
-    // 最後の月分を追加
     fullHtml += renderMonthSection(currentMonth, mFuel, mPrice, monthCards);
     listDiv.innerHTML = fullHtml;
+
+    // 統計計算
+    const avgEff = totalFuel > 0 ? ((maxDist - minDist) / totalFuel).toFixed(2) : "0";
+    document.getElementById('stats-area').innerHTML = `
+        生涯燃費: <b>${avgEff}</b> km/L<br>
+        累計支出: <b>¥${totalPrice.toLocaleString()}</b><br>
+        累計給油: <b>${totalFuel.toFixed(1)}</b> L
+    `;
+    checkAlarm(maxDist);
 }
 
 function renderMonthSection(title, fuel, price, cards) {
-    return `
-        <div class="month-header">
-            <span>${title}</span>
-            <div class="month-total">給油: ${fuel.toFixed(1)}L<br>合計: ¥${price.toLocaleString()}</div>
-        </div>
-        ${cards}`;
+    return `<div class="month-header"><span>${title}</span><div class="month-total">計 ${fuel.toFixed(1)}L / ¥${price.toLocaleString()}</div></div>${cards}`;
+}
+
+function editMode(id, dist, fuel, price, memo) {
+    document.getElementById('edit-id').value = id;
+    document.getElementById('dist').value = dist;
+    document.getElementById('fuel').value = fuel;
+    document.getElementById('price').value = price;
+    document.getElementById('memo').value = memo;
+    document.getElementById('btn-submit').innerText = "修正を保存する";
+    document.getElementById('btn-cancel').style.display = "block";
+    window.scrollTo(0,0);
+}
+
+function cancelEdit() {
+    document.getElementById('edit-id').value = "";
+    document.querySelectorAll('.form-box input').forEach(i => i.value = "");
+    document.getElementById('btn-submit').innerText = "記録を保存する";
+    document.getElementById('btn-cancel').style.display = "none";
+}
+
+async function deleteRecord(id) {
+    if(confirm("この記録を削除しますか？")) {
+        await db.collection("records").doc(id).delete();
+        loadRecords();
+    }
+}
+
+function updateAlarm(val) {
+    alarms[currentCarIndex] = parseFloat(val) || 0;
+    localStorage.setItem('alarms', JSON.stringify(alarms));
+    loadRecords();
+}
+
+function checkAlarm(currentDist) {
+    const limit = alarms[currentCarIndex];
+    const banner = document.getElementById('alarm-banner');
+    if(limit > 0 && currentDist >= limit) {
+        banner.style.display = "block";
+        document.getElementById('alarm-text').innerText = `設定距離(${limit}km)を超えました！`;
+    } else {
+        banner.style.display = "none";
+    }
 }
 
 function switchCar(idx) {
     currentCarIndex = idx;
+    cancelEdit();
+    document.getElementById('alarm-input').value = alarms[currentCarIndex] || "";
     renderTabs();
     loadRecords();
 }
 
 function renderTabs() {
-    const container = document.getElementById('car-tabs');
-    container.innerHTML = carNames.map((name, i) => 
+    document.getElementById('car-tabs').innerHTML = carNames.map((name, i) => 
         `<div class="tab ${i === currentCarIndex ? 'active' : ''}" onclick="switchCar(${i})">${name}</div>`
     ).join('');
     document.getElementById('current-car-display').innerText = carNames[currentCarIndex];
+    document.querySelectorAll('.car-name-label').forEach(el => el.innerText = carNames[currentCarIndex]);
 }
 
 function renderNameSettings() {
@@ -214,9 +273,6 @@ function toggleModal() {
     m.style.display = m.style.display === 'block' ? 'none' : 'block';
 }
 
-function exportCSV() { alert("CSV出力機能は今後実装可能です！"); }
-
-// 実行
 init();
 </script>
 </body>
