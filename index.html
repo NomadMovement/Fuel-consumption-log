@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>燃費ログ Cloud</title>
+    <title>Fuel-log</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -11,31 +11,27 @@
         :root { --main: #2c3e50; --accent: #3498db; --month-bar: #e3f2fd; }
         body { font-family: -apple-system, sans-serif; margin: 0; background: #f0f2f5; padding-bottom: 50px; }
         header { background: var(--main); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
-        
-        /* 入力エリア */
         .form-box { background: white; margin: 10px; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .form-box input { width: 100%; padding: 12px; margin: 5px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
         .btn-save { background: var(--accent); color: white; border: none; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; margin-top: 10px; }
-
+        .tab-bar { display: flex; overflow-x: auto; background: #fff; border-bottom: 1px solid #ddd; }
+        .tab { padding: 12px 20px; white-space: nowrap; cursor: pointer; color: #888; border-bottom: 3px solid transparent; }
+        .tab.active { color: var(--accent); border-bottom: 3px solid var(--accent); font-weight: bold; }
+        
         /* 月別ヘッダー */
-        .month-header { background: var(--month-bar); padding: 10px 15px; border-left: 5px solid var(--accent); font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
-        .month-total { text-align: right; color: #555; }
+        .month-header { background: var(--month-bar); padding: 10px 15px; border-left: 5px solid var(--accent); font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; margin-top: 15px; font-weight: bold; color: #01579b; }
+        .month-total { text-align: right; line-height: 1.4; }
 
         /* 記録カード */
         .card { background: white; padding: 15px; border-bottom: 1px solid #eee; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-        .card .date { grid-column: 1/3; font-weight: bold; color: #333; margin-bottom: 4px; }
-        .card .dist { font-size: 0.8rem; color: #888; grid-column: 1/3; margin-bottom: 8px; }
-        .card .val { font-size: 0.95rem; }
-        .card .eff { text-align: right; color: #e67e22; font-weight: bold; font-size: 1.1rem; }
-        .card .unit { font-size: 0.75rem; color: #999; text-align: right; }
+        .card .date { grid-column: 1/3; font-weight: bold; color: #333; margin-bottom: 4px; display: flex; justify-content: space-between; }
+        .card .dist-info { font-size: 0.8rem; color: #888; grid-column: 1/3; margin-bottom: 8px; }
+        .card .val { font-size: 0.95rem; font-weight: 500; }
+        .card .eff { text-align: right; color: #e67e22; font-weight: bold; font-size: 1.2rem; }
+        .card .unit { font-size: 0.75rem; color: #999; text-align: right; grid-column: 2/3; }
 
-        /* 設定モーダル */
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto; }
         .modal-content { background: white; margin: 20px; padding: 20px; border-radius: 15px; }
-        
-        .tab-bar { display: flex; overflow-x: auto; background: #fff; border-bottom: 1px solid #ddd; }
-        .tab { padding: 12px 20px; white-space: nowrap; cursor: pointer; color: #888; }
-        .tab.active { color: var(--accent); border-bottom: 3px solid var(--accent); font-weight: bold; }
     </style>
 </head>
 <body>
@@ -57,7 +53,7 @@
     <input type="number" id="dist" placeholder="現在の走行距離 (km)" inputmode="decimal">
     <div style="display:flex; gap:10px;">
         <input type="number" id="fuel" placeholder="給油量 (L)" inputmode="decimal">
-        <input type="number" id="price" placeholder="金額 (円)" inputmode="numeric">
+        <input type="number" id="price" placeholder="合計金額 (円)" inputmode="numeric">
     </div>
     <input type="text" id="memo" placeholder="メモ（任意）">
     <button class="btn-save" onclick="addRecord()">記録を保存する</button>
@@ -70,13 +66,13 @@
         <h3><i class="fas fa-car"></i> 車両名の設定</h3>
         <div id="car-names-input"></div>
         <hr>
-        <button class="btn-save" style="background:#666;" onclick="exportCSV()">データをメールで送る (CSV)</button>
+        <button class="btn-save" style="background:#666;" onclick="exportCSV()">CSV出力（準備中）</button>
         <button class="btn-save" style="background:#e74c3c; margin-top:20px;" onclick="toggleModal()">閉じる</button>
     </div>
 </div>
 
 <script>
-// ★ここにコピーしたConfigを貼り付けます
+// ★ここにご自身の Firebase Config を貼り付けてください
 const firebaseConfig = {
   apiKey: "AIzaSyBP_FmmHPoTKJ0c73syYfJGcf88JMca_aI",
   authDomain: "fuel-consumption-log-102e0.firebaseapp.com",
@@ -88,7 +84,7 @@ const firebaseConfig = {
 };
 
 // 初期化
-firebase.initializeApp(firebaseConfig);
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 let currentCarIndex = 0;
@@ -96,93 +92,115 @@ let carNames = JSON.parse(localStorage.getItem('carNames')) || ["車1", "車2", 
 
 function init() {
     renderTabs();
-    loadRecords();
     renderNameSettings();
-}
-
-function renderTabs() {
-    const tabs = document.querySelectorAll('.tab');
-    tabs.forEach((tab, i) => {
-        tab.innerText = carNames[i];
-        tab.className = i === currentCarIndex ? 'tab active' : 'tab';
-    });
-    document.getElementById('current-car-display').innerText = carNames[currentCarIndex];
+    loadRecords();
 }
 
 async function addRecord() {
     const d = parseFloat(document.getElementById('dist').value);
     const f = parseFloat(document.getElementById('fuel').value);
     const p = parseFloat(document.getElementById('price').value);
-    if(!d || !f || !p) return alert("入力してください");
+    const m = document.getElementById('memo').value;
+
+    if(!d || !f || !p) return alert("数値を入力してください");
 
     await db.collection("records").add({
         carId: currentCarIndex,
         dist: d,
         fuel: f,
         price: p,
-        memo: document.getElementById('memo').value,
+        memo: m,
         date: firebase.firestore.FieldValue.serverTimestamp()
     });
     
-    document.querySelectorAll('input').forEach(i => i.value = "");
+    document.querySelectorAll('.form-box input').forEach(i => i.value = "");
     loadRecords();
 }
 
 async function loadRecords() {
+    const listDiv = document.getElementById('list-container');
+    listDiv.innerHTML = "<p style='text-align:center; padding:20px;'>読み込み中...</p>";
+
     const snap = await db.collection("records")
         .where("carId", "==", currentCarIndex)
         .orderBy("date", "desc").get();
     
-    let html = "";
+    let fullHtml = "";
     let currentMonth = "";
     let mFuel = 0, mPrice = 0;
-    let tempHtml = "";
-    let lastDist = null;
+    let monthCards = "";
 
     const docs = snap.docs.map(d => d.data());
-    
+
+    if(docs.length === 0) {
+        listDiv.innerHTML = "<p style='text-align:center; padding:20px;'>記録がありません</p>";
+        return;
+    }
+
     docs.forEach((data, i) => {
         const date = data.date ? data.date.toDate() : new Date();
         const mStr = `${date.getFullYear()}年${date.getMonth() + 1}月`;
         
-        // 燃費計算（次のインデックス＝前回データ）
+        // 燃費計算（1つ後のインデックス＝前回のデータ）
         let eff = "---";
         if(i < docs.length - 1) {
             const prevDist = docs[i+1].dist;
-            eff = ((data.dist - prevDist) / data.fuel).toFixed(2);
+            const diff = data.dist - prevDist;
+            if(diff > 0) eff = (diff / data.fuel).toFixed(2);
         }
 
-        if (currentMonth !== mStr && currentMonth !== "") {
-            html += `<div class="month-header"><span>${currentMonth}</span><div class="month-total">計 ${mFuel.toFixed(1)}L<br>¥${mPrice.toLocaleString()}</div></div>` + tempHtml;
-            tempHtml = ""; mFuel = 0; mPrice = 0;
+        // 月が変わった時の集計処理
+        if (currentMonth !== "" && currentMonth !== mStr) {
+            fullHtml += renderMonthSection(currentMonth, mFuel, mPrice, monthCards);
+            mFuel = 0; mPrice = 0; monthCards = "";
         }
 
         currentMonth = mStr;
         mFuel += data.fuel;
         mPrice += data.price;
 
-        tempHtml += `
+        monthCards += `
             <div class="card">
-                <div class="date">${date.toLocaleDateString()} <span style="font-weight:normal; font-size:0.7rem;">${data.memo || ''}</span></div>
-                <div class="dist">累計: ${data.dist.toLocaleString()} km</div>
-                <div class="val">${data.fuel}L / ${data.price.toLocaleString()}円</div>
-                <div class="eff">${eff} <small style="font-size:0.6rem">km/L</small></div>
+                <div class="date">${date.getMonth()+1}/${date.getDate()} <span>${data.memo || ''}</span></div>
+                <div class="dist-info">累計: ${data.dist.toLocaleString()} km</div>
+                <div class="val">${data.fuel}L / ¥${data.price.toLocaleString()}</div>
+                <div class="eff">${eff} <small>km/L</small></div>
                 <div class="unit">単価: ¥${Math.round(data.price/data.fuel)}/L</div>
             </div>`;
     });
-    html += `<div class="month-header"><span>${currentMonth}</span><div class="month-total">計 ${mFuel.toFixed(1)}L<br>¥${mPrice.toLocaleString()}</div></div>` + tempHtml;
-    document.getElementById('list-container').innerHTML = html;
+
+    // 最後の月分を追加
+    fullHtml += renderMonthSection(currentMonth, mFuel, mPrice, monthCards);
+    listDiv.innerHTML = fullHtml;
 }
 
-function switchCar(idx) { currentCarIndex = idx; renderTabs(); loadRecords(); }
-function toggleModal() { const m = document.getElementById('modal'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; }
+function renderMonthSection(title, fuel, price, cards) {
+    return `
+        <div class="month-header">
+            <span>${title}</span>
+            <div class="month-total">給油: ${fuel.toFixed(1)}L<br>合計: ¥${price.toLocaleString()}</div>
+        </div>
+        ${cards}`;
+}
+
+function switchCar(idx) {
+    currentCarIndex = idx;
+    renderTabs();
+    loadRecords();
+}
+
+function renderTabs() {
+    const container = document.getElementById('car-tabs');
+    container.innerHTML = carNames.map((name, i) => 
+        `<div class="tab ${i === currentCarIndex ? 'active' : ''}" onclick="switchCar(${i})">${name}</div>`
+    ).join('');
+    document.getElementById('current-car-display').innerText = carNames[currentCarIndex];
+}
 
 function renderNameSettings() {
-    let h = "";
-    carNames.forEach((n, i) => {
-        h += `<input type="text" value="${n}" onchange="updateCarName(${i}, this.value)">`;
-    });
-    document.getElementById('car-names-input').innerHTML = h;
+    document.getElementById('car-names-input').innerHTML = carNames.map((n, i) => 
+        `<div style="margin-bottom:10px;">車${i+1}: <input type="text" value="${n}" onchange="updateCarName(${i}, this.value)"></div>`
+    ).join('');
 }
 
 function updateCarName(i, val) {
@@ -191,10 +209,14 @@ function updateCarName(i, val) {
     renderTabs();
 }
 
-function exportCSV() {
-    alert("この機能はFirebaseから全データを取得してCSV化するロジックを次に追加できます！");
+function toggleModal() {
+    const m = document.getElementById('modal');
+    m.style.display = m.style.display === 'block' ? 'none' : 'block';
 }
 
+function exportCSV() { alert("CSV出力機能は今後実装可能です！"); }
+
+// 実行
 init();
 </script>
 </body>
