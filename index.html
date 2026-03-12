@@ -3,35 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fuel-log v5</title>
+    <title>Fuel-log v6</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="icon" href="icon.png">
     <style>
-        :root { --main: #2c3e50; --accent: #3498db; --month-bar: #e3f2fd; --warn: #e74c3c; --map: #27ae60; --price-tag: #7f8c8d; }
-        body { font-family: -apple-system, sans-serif; margin: 0; background: #f0f2f5; padding-bottom: 50px; }
-        header { background: var(--main); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        /* 基本変数（ライトモード） */
+        :root {
+            --bg: #f0f2f5;
+            --card-bg: #ffffff;
+            --header-bg: #2c3e50;
+            --text-main: #333333;
+            --text-sub: #666666;
+            --accent: #3498db;
+            --month-bar: #e3f2fd;
+            --month-text: #01579b;
+            --border: #eeeeee;
+            --input-bg: #ffffff;
+            --warn: #e74c3c;
+            --map: #27ae60;
+            --eff: #e67e22;
+        }
+
+        /* ダークモード設定（端末の設定がダークの時に自動適用） */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #121212;
+                --card-bg: #1e1e1e;
+                --header-bg: #000000;
+                --text-main: #e0e0e0;
+                --text-sub: #aaaaaa;
+                --accent: #3498db;
+                --month-bar: #1a2733;
+                --month-text: #90caf9;
+                --border: #333333;
+                --input-bg: #2c2c2c;
+            }
+        }
+
+        body { font-family: -apple-system, sans-serif; margin: 0; background: var(--bg); color: var(--text-main); padding-bottom: 50px; transition: background 0.3s; }
+        header { background: var(--header-bg); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
         .alert-bar { background: var(--warn); color: white; padding: 10px; text-align: center; font-weight: bold; font-size: 0.9rem; display: none; }
-        .form-box { background: white; margin: 10px; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .form-box input { width: 100%; padding: 12px; margin: 5px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        .form-box { background: var(--card-bg); margin: 10px; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+        .form-box input { width: 100%; padding: 12px; margin: 5px 0; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; font-size: 16px; background: var(--input-bg); color: var(--text-main); }
         .btn-save { background: var(--accent); color: white; border: none; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; margin-top: 10px; }
-        .tab-bar { display: flex; overflow-x: auto; background: #fff; border-bottom: 1px solid #ddd; }
-        .tab { padding: 12px 20px; white-space: nowrap; cursor: pointer; color: #888; border-bottom: 3px solid transparent; }
+        .tab-bar { display: flex; overflow-x: auto; background: var(--card-bg); border-bottom: 1px solid var(--border); }
+        .tab { padding: 12px 20px; white-space: nowrap; cursor: pointer; color: var(--text-sub); border-bottom: 3px solid transparent; }
         .tab.active { color: var(--accent); border-bottom: 3px solid var(--accent); font-weight: bold; }
-        .month-header { background: var(--month-bar); padding: 10px 15px; border-left: 5px solid var(--accent); font-size: 0.8rem; display: flex; flex-direction: column; margin-top: 15px; font-weight: bold; color: #01579b; }
-        .month-summary { display: flex; justify-content: space-between; margin-top: 2px; font-size: 0.75rem; color: #555; }
-        .card { background: white; padding: 15px; border-bottom: 1px solid #eee; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; position: relative; }
-        .card .date { grid-column: 1/3; font-weight: bold; color: #333; display: flex; justify-content: space-between; align-items: center; }
-        .time-label { font-size: 0.75rem; color: #666; font-weight: normal; margin-left: 5px; }
-        .unit-price { font-size: 0.75rem; color: var(--price-tag); margin-left: 8px; font-weight: normal; }
-        .card .actions { display: flex; gap: 12px; color: #aaa; align-items: center; }
-        .card .eff { text-align: right; color: #e67e22; font-weight: bold; font-size: 1.2rem; }
+        .month-header { background: var(--month-bar); padding: 10px 15px; border-left: 5px solid var(--accent); font-size: 0.8rem; display: flex; flex-direction: column; margin-top: 15px; font-weight: bold; color: var(--month-text); }
+        .month-summary { display: flex; justify-content: space-between; margin-top: 2px; font-size: 0.75rem; color: var(--text-sub); }
+        .card { background: var(--card-bg); padding: 15px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 1fr 1fr; gap: 4px; position: relative; }
+        .card .date { grid-column: 1/3; font-weight: bold; color: var(--text-main); display: flex; justify-content: space-between; align-items: center; }
+        .time-label { font-size: 0.75rem; color: var(--text-sub); font-weight: normal; margin-left: 5px; }
+        .unit-price { font-size: 0.75rem; color: var(--text-sub); margin-left: 8px; font-weight: normal; }
+        .card .actions { display: flex; gap: 12px; color: var(--text-sub); align-items: center; }
+        .card .eff { text-align: right; color: var(--eff); font-weight: bold; font-size: 1.2rem; }
         .map-link { color: var(--map); text-decoration: none; font-size: 0.75rem; font-weight: bold; }
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto; }
-        .modal-content { background: white; margin: 20px; padding: 20px; border-radius: 15px; }
-        .stats-box { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 10px; font-size: 0.9rem; line-height: 1.8; }
+        .modal-content { background: var(--card-bg); margin: 20px; padding: 20px; border-radius: 15px; color: var(--text-main); }
+        .stats-box { background: var(--bg); padding: 15px; border-radius: 8px; margin-top: 10px; font-size: 0.9rem; line-height: 1.8; color: var(--text-main); }
     </style>
 </head>
 <body>
@@ -141,7 +173,7 @@ async function loadRecords() {
         const dt = d.date ? d.date.toDate() : new Date();
         const timeStr = dt.getHours().toString().padStart(2, '0') + ":" + dt.getMinutes().toString().padStart(2, '0');
         const mS = `${dt.getFullYear()}年${dt.getMonth()+1}月`;
-        const unitPrice = Math.round(d.price / d.fuel); // リッター単価
+        const unitPrice = Math.round(d.price / d.fuel);
         
         let eff = "---"; 
         if(i < docs.length - 1) eff = ((d.dist - docs[i+1].data().dist) / d.fuel).toFixed(2);
@@ -150,14 +182,14 @@ async function loadRecords() {
         curM = mS; mF += d.fuel; mP += d.price; tF += d.fuel; tP += d.price;
         if(i === 0) maxD = d.dist; minD = d.dist;
         
-        let mapBtn = d.loc ? `<a class="map-link" href="https://www.google.com/maps?q=${d.loc.lat},${d.loc.lng}" target="_blank"><i class="fas fa-map-marker-alt"></i> マップ</a>` : "";
+        let mapBtn = d.loc ? `<a class="map-link" href="https://www.google.com/maps/search/?api=1&query=${d.loc.lat},${d.loc.lng}" target="_blank"><i class="fas fa-map-marker-alt"></i> マップ</a>` : "";
 
         mC += `<div class="card">
                 <div class="date">
                     <div>${dt.getMonth()+1}/${dt.getDate()}<span class="time-label">${timeStr}</span><span class="unit-price">¥${unitPrice}/L</span></div>
                     <div class="actions">${mapBtn}<i class="fas fa-edit" onclick="editMode('${doc.id}',${d.dist},${d.fuel},${d.price},'${d.memo||''}')"></i><i class="fas fa-trash" onclick="deleteRecord('${doc.id}')"></i></div>
                 </div>
-                <div style="grid-column:1/3;font-size:0.8rem;color:#888;">累計: ${d.dist.toLocaleString()} km <span style="margin-left:10px;color:#999;">${d.memo||''}</span></div>
+                <div style="grid-column:1/3;font-size:0.8rem;color:var(--text-sub);">累計: ${d.dist.toLocaleString()} km <span style="margin-left:10px;">${d.memo||''}</span></div>
                 <div>${d.fuel}L / ¥${d.price.toLocaleString()}</div>
                 <div class="eff">${eff} <small style="font-size:0.6rem;">km/L</small></div>
               </div>`;
