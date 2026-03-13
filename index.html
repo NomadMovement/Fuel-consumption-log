@@ -70,21 +70,29 @@
 </div>
 
 <script>
-// ★ここにご自身のFirebase Configを貼り付け
-const firebaseConfig = {const firebaseConfig = {
-  apiKey: "AIzaSyBP_FmmHPoTKJ0c73syYfJGcf88JMca_aI",
-  authDomain: "fuel-consumption-log-102e0.firebaseapp.com",
-  projectId: "fuel-consumption-log-102e0",
-  storageBucket: "fuel-consumption-log-102e0.firebasestorage.app",
-  messagingSenderId: "662071411255",
-  appId: "1:662071411255:web:f907cbf3dbd0920bb175b2",
-  measurementId: "G-NWNNFXQDE2"};
+// --- Firebase Config（修正済み） ---
+const firebaseConfig = {
+    apiKey: "AIzaSyBP_FmmHPoTKJ0c73syYfJGcf88JMca_aI",
+    authDomain: "fuel-consumption-log-102e0.firebaseapp.com",
+    projectId: "fuel-consumption-log-102e0",
+    storageBucket: "fuel-consumption-log-102e0.firebasestorage.app",
+    messagingSenderId: "662071411255",
+    appId: "1:662071411255:web:f907cbf3dbd0920bb175b2",
+    measurementId: "G-NWNNFXQDE2"
+};
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 let currentCarIndex = 0;
 let carNames = JSON.parse(localStorage.getItem('carNames')) || ["車両名1", "車両名2", "車両名3", "車両名4", "車両名5"];
 const EARTH_KM = 40075; // 地球一周
+
+// 初期化関数を明示的に呼び出す形に整理
+function init() {
+    renderTabs();
+    loadRecords();
+}
 
 async function addRecord() {
     const d = parseFloat(document.getElementById('dist').value);
@@ -94,64 +102,87 @@ async function addRecord() {
     const editId = document.getElementById('edit-id').value;
     if(!d || !f || !p) return alert("数値を入力してください");
 
-    if(editId) {
-        await db.collection("records").doc(editId).update({ dist: d, fuel: f, price: p, memo: m });
-    } else {
-        await db.collection("records").add({
-            carId: currentCarIndex, dist: d, fuel: f, price: p, memo: m,
-            date: firebase.firestore.FieldValue.serverTimestamp()
-        });
+    try {
+        if(editId) {
+            await db.collection("records").doc(editId).update({ dist: d, fuel: f, price: p, memo: m });
+        } else {
+            await db.collection("records").add({
+                carId: currentCarIndex, dist: d, fuel: f, price: p, memo: m,
+                date: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
+        cancelEdit();
+        loadRecords();
+    } catch (e) {
+        alert("エラーが発生しました: " + e.message);
     }
-    loadRecords(); cancelEdit();
 }
 
 async function loadRecords() {
     const listDiv = document.getElementById('list-container');
-    const snap = await db.collection("records").where("carId", "==", currentCarIndex).orderBy("date", "desc").get();
-    let html = ""; let curM = ""; let mF = 0; let mP = 0; let mC = "";
-    let tF = 0; let tP = 0; let maxD = 0; let minD = 0;
-    const docs = snap.docs;
+    try {
+        const snap = await db.collection("records").where("carId", "==", currentCarIndex).orderBy("date", "desc").get();
+        let html = ""; let curM = ""; let mF = 0; let mP = 0; let mC = "";
+        let tF = 0; let tP = 0; let maxD = 0; let minD = 0;
+        const docs = snap.docs;
 
-    docs.forEach((doc, i) => {
-        const d = doc.data(); 
-        const dt = d.date ? d.date.toDate() : new Date();
-        const mS = `${dt.getFullYear()}年${dt.getMonth()+1}月`;
-        
-        let eff = "---";
-        let lapInfo = "";
-        if(i < docs.length - 1) {
-            const diff = d.dist - docs[i+1].data().dist;
-            eff = (diff / d.fuel).toFixed(2);
-            lapInfo = `<div class="earth-badge"><i class="fas fa-globe"></i> この区間: 地球 ${(diff/EARTH_KM).toFixed(5)} 周分</div>`;
+        if (docs.length === 0) {
+            listDiv.innerHTML = "<p style='text-align:center;padding:20px;'>記録がありません</p>";
+            document.getElementById('stats-area').innerHTML = "冒険を始めましょう！";
+            return;
         }
 
-        if (curM !== "" && curM !== mS) { html += renderMS(curM, mF, mP, mC); mF = 0; mP = 0; mC = ""; }
-        curM = mS; mF += d.fuel; mP += d.price; tF += d.fuel; tP += d.price;
-        if(i === 0) maxD = d.dist; minD = d.dist;
+        docs.forEach((doc, i) => {
+            const d = doc.data(); 
+            const dt = d.date ? d.date.toDate() : new Date();
+            const mS = `${dt.getFullYear()}年${dt.getMonth()+1}月`;
+            
+            let eff = "---";
+            let lapInfo = "";
+            if(i < docs.length - 1) {
+                const diff = d.dist - docs[i+1].data().dist;
+                eff = (diff / d.fuel).toFixed(2);
+                lapInfo = `<div class="earth-badge"><i class="fas fa-globe"></i> この区間: 地球 ${(diff/EARTH_KM).toFixed(5)} 周分</div>`;
+            }
 
-        mC += `<div class="card">
-                <div class="date">${dt.getMonth()+1}/${dt.getDate()} <span>${Math.round(d.price/d.fuel)}円/L</span></div>
-                ${lapInfo}
-                <div style="grid-column:1/3;font-size:0.8rem;color:var(--text-sub);">累計: ${d.dist.toLocaleString()} km</div>
-                <div>${d.fuel}L / ¥${d.price.toLocaleString()}</div>
-                <div class="eff">${eff} <small style="font-size:0.6rem;">km/L</small></div>
-              </div>`;
-    });
-    html += renderMS(curM, mF, mP, mC); listDiv.innerHTML = html;
-    
-    const totalDist = maxD - minD;
-    document.getElementById('stats-area').innerHTML = `
-        <b>生涯走行距離:</b> ${totalDist.toLocaleString()} km<br>
-        <b>地球周回数:</b> <span style="color:var(--globe)">${(totalDist/EARTH_KM).toFixed(4)} 周分</span><br>
-        <b>生涯平均燃費:</b> ${(tF>0?(totalDist/tF).toFixed(2):0)} km/L
-    `;
+            if (curM !== "" && curM !== mS) { html += renderMS(curM, mF, mP, mC); mF = 0; mP = 0; mC = ""; }
+            curM = mS; mF += d.fuel; mP += d.price; tF += d.fuel; tP += d.price;
+            if(i === 0) maxD = d.dist;
+            minD = d.dist;
+
+            mC += `<div class="card">
+                    <div class="date">${dt.getMonth()+1}/${dt.getDate()} <span>${Math.round(d.price/d.fuel)}円/L</span></div>
+                    ${lapInfo}
+                    <div style="grid-column:1/3;font-size:0.8rem;color:var(--text-sub);">累計: ${d.dist.toLocaleString()} km</div>
+                    <div>${d.fuel}L / ¥${d.price.toLocaleString()}</div>
+                    <div class="eff">${eff} <small style="font-size:0.6rem;">km/L</small></div>
+                  </div>`;
+        });
+        html += renderMS(curM, mF, mP, mC);
+        listDiv.innerHTML = html;
+        
+        const totalDist = maxD - minD;
+        document.getElementById('stats-area').innerHTML = `
+            <b>生涯走行距離:</b> ${totalDist.toLocaleString()} km<br>
+            <b>地球周回数:</b> <span style="color:var(--globe)">${(totalDist/EARTH_KM).toFixed(4)} 周分</span><br>
+            <b>生涯平均燃費:</b> ${(tF>0?(totalDist/tF).toFixed(2):0)} km/L
+        `;
+    } catch (e) {
+        listDiv.innerHTML = "データの読み込みに失敗しました。Firestoreのインデックス設定を確認してください。";
+        console.error(e);
+    }
 }
 
 function renderMS(t, f, p, c) { return `<div class="month-header">${t} <div>¥${p.toLocaleString()} / ${f.toFixed(1)}L</div></div>${c}`; }
-function cancelEdit() { document.getElementById('edit-id').value = ""; document.querySelectorAll('input').forEach(i => i.value=""); document.getElementById('btn-submit').innerText="保存"; }
+function cancelEdit() { document.getElementById('edit-id').value = ""; document.querySelectorAll('.form-box input').forEach(i => i.value=""); document.getElementById('btn-submit').innerText="記録を保存する"; document.getElementById('btn-cancel').style.display="none"; }
 function toggleModal() { const m = document.getElementById('modal'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; }
-function renderTabs() { document.getElementById('car-tabs').innerHTML = carNames.map((n, i) => `<div class="tab ${i===currentCarIndex?'active':''}" onclick="currentCarIndex=${i};loadRecords();renderTabs();">${n}</div>`).join(''); document.getElementById('current-car-display').innerText=carNames[currentCarIndex]; }
-renderTabs(); loadRecords();
+function renderTabs() { 
+    document.getElementById('car-tabs').innerHTML = carNames.map((n, i) => `<div class="tab ${i===currentCarIndex?'active':''}" onclick="currentCarIndex=${i};renderTabs();loadRecords();">${n}</div>`).join(''); 
+    document.getElementById('current-car-display').innerText = carNames[currentCarIndex]; 
+}
+
+// 実行
+init();
 </script>
 </body>
 </html>
