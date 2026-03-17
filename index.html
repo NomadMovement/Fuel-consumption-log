@@ -3,22 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fuel-log v7.8</title>
+    <title>Fuel-log v7.9</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         :root {
             --bg: #f0f2f5; --card-bg: #ffffff; --header-bg: #d32f2f;
             --text-main: #333333; --text-sub: #666666; --accent: #ff5252;
             --month-bar: #ffebee; --month-text: #b71c1c; --border: #eeeeee;
-            --tower: #d32f2f; --map: #27ae60; --eff: #e67e22; --chart-line: #3498db;
+            --tower: #d32f2f; --map: #27ae60; --eff: #e67e22; --chart-bar: #3498db; --chart-line: #e74c3c;
         }
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg: #121212; --card-bg: #1e1e1e; --header-bg: #000000; --text-main: #e0e0e0;
                 --text-sub: #aaaaaa; --month-bar: #2c1a1a; --month-text: #ff8a80; --border: #333333;
-                --chart-line: #5dade2;
+                --chart-bar: #5dade2; --chart-line: #ec7063;
             }
         }
         body { font-family: -apple-system, sans-serif; margin: 0; background: var(--bg); color: var(--text-main); padding-bottom: 50px; }
@@ -45,7 +46,7 @@
         .edit-btn { color: #aaa; font-size: 1.1rem; cursor: pointer; }
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto; }
         .modal-content { background: var(--card-bg); margin: 15px; padding: 20px; border-radius: 15px; }
-        #chart-container { width: 100%; margin: 15px 0; height: 200px; }
+        .chart-box { width: 100%; height: 180px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -73,10 +74,9 @@
 
 <div id="modal">
     <div class="modal-content">
-        <h3><i class="fas fa-gas-pump"></i> ガソリン代推移</h3>
-        <div id="chart-container">
-            <canvas id="costChart"></canvas>
-        </div>
+        <h3><i class="fas fa-coins"></i> 支出と単価の推移</h3>
+        <div class="chart-box"><canvas id="costChart"></canvas></div>
+        <div class="chart-box"><canvas id="priceChart"></canvas></div>
         <hr style="border:0; border-top:1px solid var(--border);">
         <h3><i class="fas fa-tachometer-alt"></i> 総走行統計</h3>
         <div id="stats-area" style="line-height:2; background:var(--bg); padding:15px; border-radius:8px; font-size:0.9rem;"></div>
@@ -85,6 +85,7 @@
 </div>
 
 <script>
+// --- Firebase Config ---
 const firebaseConfig = {
     apiKey: "AIzaSyBP_FmmHPoTKJ0c73syYfJGcf88JMca_aI",
     authDomain: "fuel-consumption-log-102e0.firebaseapp.com",
@@ -101,6 +102,7 @@ let currentCarIndex = 0;
 let carNames = JSON.parse(localStorage.getItem('carNames')) || ["マジェスティS", "車両2", "車両3", "車両4", "車両5"];
 const TOWER_H = 0.333; 
 let costChart = null;
+let priceChart = null;
 
 async function addRecord() {
     const d = parseFloat(document.getElementById('dist').value);
@@ -134,7 +136,8 @@ async function loadRecords() {
     let totalFuelForEff = 0; let firstDist = 0; let lastDist = 0;
     
     // グラフ用データ
-    let monthlyData = {}; 
+    let monthlyCost = {}; 
+    let monthlyFuel = {};
 
     if (snap.docs.length === 0) {
         listDiv.innerHTML = "<p style='text-align:center;padding:20px;'>記録がありません</p>";
@@ -147,8 +150,8 @@ async function loadRecords() {
         const mS = `${dt.getFullYear()}年${dt.getMonth()+1}月`;
         const graphKey = `${dt.getFullYear()}/${dt.getMonth()+1}`;
         
-        // グラフ用集計
-        monthlyData[graphKey] = (monthlyData[graphKey] || 0) + d.price;
+        monthlyCost[graphKey] = (monthlyCost[graphKey] || 0) + d.price;
+        monthlyFuel[graphKey] = (monthlyFuel[graphKey] || 0) + d.fuel;
 
         let eff = "---";
         let towerStr = "";
@@ -165,7 +168,8 @@ async function loadRecords() {
         if(i === 0) firstDist = d.dist;
         lastDist = d.dist;
 
-        let mapBtn = d.loc ? `<a class="map-btn" href="http://www.google.com/maps?q=${d.loc.lat},${d.loc.lng}" target="_blank"><i class="fas fa-map-marker-alt"></i> マップ</a>` : "";
+        // マップリンクを確実に開く形式に修正
+        let mapBtn = d.loc ? `<a class="map-btn" href="https://www.google.com/maps?q=${d.loc.lat},${d.loc.lng}" target="_blank"><i class="fas fa-map-marker-alt"></i> マップ</a>` : "";
 
         mC += `<div class="card">
                 <div class="card-left">
@@ -196,38 +200,29 @@ async function loadRecords() {
         <b>タワー合計:</b> ${Math.floor(totalTripDist/TOWER_H).toLocaleString()} 本分
     `;
     
-    // グラフの更新
-    updateChart(monthlyData);
+    updateCharts(monthlyCost, monthlyFuel);
 }
 
-function updateChart(dataObj) {
-    const ctx = document.getElementById('costChart').getContext('2d');
-    const labels = Object.keys(dataObj).reverse();
-    const values = Object.values(dataObj).reverse();
+function updateCharts(costObj, fuelObj) {
+    const labels = Object.keys(costObj).reverse();
+    const costs = Object.values(costObj).reverse();
+    const prices = labels.map(key => Math.round(costObj[key] / fuelObj[key]));
     const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
+    // 支出グラフ (Bar)
     if (costChart) costChart.destroy();
-    
-    costChart = new Chart(ctx, {
+    costChart = new Chart(document.getElementById('costChart'), {
         type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'ガソリン代 (円)',
-                data: values,
-                backgroundColor: isDark ? '#5dade2' : '#3498db',
-                borderRadius: 5
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: { beginAtZero: true, grid: { color: isDark ? '#333' : '#eee' }, ticks: { color: isDark ? '#aaa' : '#666' } },
-                x: { grid: { display: false }, ticks: { color: isDark ? '#aaa' : '#666' } }
-            },
-            plugins: { legend: { display: false } }
-        }
+        data: { labels: labels, datasets: [{ label: '月間支出 (円)', data: costs, backgroundColor: isDark ? '#5dade2' : '#3498db', borderRadius: 5 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: '月間支出総額 (円)', color: isDark ? '#ddd' : '#666' } }, scales: { y: { beginAtZero: true, ticks: { color: isDark ? '#aaa' : '#666' } }, x: { ticks: { color: isDark ? '#aaa' : '#666' } } } }
+    });
+
+    // 単価推移グラフ (Line)
+    if (priceChart) priceChart.destroy();
+    priceChart = new Chart(document.getElementById('priceChart'), {
+        type: 'line',
+        data: { labels: labels, datasets: [{ label: '平均単価 (円/L)', data: prices, borderColor: isDark ? '#ec7063' : '#e74c3c', backgroundColor: isDark ? 'rgba(236,112,99,0.2)' : 'rgba(231,76,60,0.2)', fill: true, tension: 0.3 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: '平均単価推移 (円/L)', color: isDark ? '#ddd' : '#666' } }, scales: { y: { ticks: { color: isDark ? '#aaa' : '#666' } }, x: { ticks: { color: isDark ? '#aaa' : '#666' } } } }
     });
 }
 
