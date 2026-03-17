@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fuel-log v7.6</title>
+    <title>Fuel-log v7.7</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -98,7 +98,7 @@ const db = firebase.firestore();
 
 let currentCarIndex = 0;
 let carNames = JSON.parse(localStorage.getItem('carNames')) || ["マジェスティS", "車両2", "車両3", "車両4", "車両5"];
-const TOWER_H = 0.333; // 東京タワー 333m
+const TOWER_H = 0.333; 
 
 async function addRecord() {
     const d = parseFloat(document.getElementById('dist').value);
@@ -110,7 +110,6 @@ async function addRecord() {
 
     let loc = null;
     if(!editId) {
-        // 新規登録時のみGPS取得
         const pos = await new Promise(r => navigator.geolocation.getCurrentPosition(r, () => r(null), {timeout:5000}));
         if(pos) loc = {lat: pos.coords.latitude, lng: pos.coords.longitude};
     }
@@ -146,22 +145,21 @@ async function loadRecords() {
         let eff = "---";
         let towerStr = "";
         
-        // 【修正】現在のデータ(i)と、一つ古いデータ(i+1)の差分で計算
         if(i < docs.length - 1) {
             const olderData = docs[i+1].data();
-            const tripDist = d.dist - olderData.dist; // 区間走行距離
+            const tripDist = d.dist - olderData.dist; 
             eff = (tripDist / d.fuel).toFixed(2);
-            towerStr = `<span class="tower-text"><i class="fas fa-broadcast-tower"></i> 東京タワー ${(tripDist/TOWER_H).toFixed(1)} 本分</span>`;
-            totalFuelForEff += d.fuel; // 統計用（最初の給油を除外した合計燃料）
+            // 本数の横に (〇〇km) を追加
+            towerStr = `<span class="tower-text"><i class="fas fa-broadcast-tower"></i> 東京タワー ${(tripDist/TOWER_H).toFixed(1)} 本分 <span style="font-weight:normal; font-size:0.75rem;">(${tripDist.toFixed(1)}km)</span></span>`;
+            totalFuelForEff += d.fuel;
         }
 
         if (curM !== "" && curM !== mS) { html += renderMS(curM, mF, mP, mC); mF=0; mP=0; mC=""; }
         curM = mS; mF += d.fuel; mP += d.price;
         
-        if(i === 0) firstDist = d.dist; // 最新の距離
-        lastDist = d.dist; // ループの最後で一番古い距離になる
+        if(i === 0) firstDist = d.dist;
+        lastDist = d.dist;
 
-        // 【修正】GoogleマップのURL形式を修正
         let mapBtn = d.loc ? `<a class="map-btn" href="https://www.google.com/maps?q=${d.loc.lat},${d.loc.lng}" target="_blank"><i class="fas fa-map-marker-alt"></i> マップ</a>` : "";
 
         mC += `<div class="card">
@@ -185,7 +183,6 @@ async function loadRecords() {
     html += renderMS(curM, mF, mP, mC);
     listDiv.innerHTML = html;
 
-    // 【修正】生涯統計の計算
     const totalTripDist = firstDist - lastDist;
     const lifetimeEff = totalFuelForEff > 0 ? (totalTripDist / totalFuelForEff).toFixed(2) : "---";
 
@@ -200,7 +197,10 @@ function renderMS(t, f, p, c) { return `<div class="month-header">${t} (計 ${f.
 function cancelEdit() { document.getElementById('edit-id').value=""; document.querySelectorAll('.form-box input').forEach(i => i.value=""); document.getElementById('btn-submit').innerText="記録を保存する"; document.getElementById('btn-cancel').style.display="none"; }
 function editMode(id, d, f, p, m) { document.getElementById('edit-id').value=id; document.getElementById('dist').value=d; document.getElementById('fuel').value=f; document.getElementById('price').value=p; document.getElementById('memo').value=m; document.getElementById('btn-submit').innerText="修正を保存"; document.getElementById('btn-cancel').style.display="block"; window.scrollTo(0,0); }
 function toggleModal() { const m = document.getElementById('modal'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; }
-function renderTabs() { document.getElementById('car-tabs').innerHTML = carNames.map((n, i) => `<div class="tab ${i===currentCarIndex?'active':''}" onclick="currentCarIndex=${i};renderTabs();loadRecords();">${n}</div>`).join(''); document.getElementById('current-car-display').innerText = carNames[currentCarIndex]; }
+function renderTabs() { 
+    document.getElementById('car-tabs').innerHTML = carNames.map((n, i) => `<div class="tab ${i===currentCarIndex?'active':''}" onclick="currentCarIndex=${i};renderTabs();loadRecords();">${n}</div>`).join(''); 
+    document.getElementById('current-car-display').innerText = carNames[currentCarIndex]; 
+}
 renderTabs(); loadRecords();
 </script>
 </body>
