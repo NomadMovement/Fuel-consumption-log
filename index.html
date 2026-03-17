@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fuel-log v7.4</title>
+    <title>Fuel-log v7.6</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -31,7 +31,7 @@
         .month-header { background: var(--month-bar); padding: 10px 15px; border-left: 5px solid var(--tower); font-size: 0.8rem; color: var(--month-text); font-weight: bold; margin-top: 10px; }
         
         .card { background: var(--card-bg); padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; }
-        .card-left { flex: 1; }
+        .card-left { flex: 1; padding-right: 10px; }
         .card-right { text-align: right; min-width: 110px; }
         
         .date-row { font-weight: bold; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
@@ -43,9 +43,9 @@
         .unit-label { font-size: 0.7rem; color: var(--eff); }
         .unit-price-tag { font-size: 0.75rem; color: var(--text-sub); margin-bottom: 4px; display: block; }
         
-        .action-row { margin-top: 12px; display: flex; justify-content: flex-end; gap: 15px; align-items: center; }
+        .action-row { margin-top: 15px; display: flex; justify-content: flex-end; gap: 20px; align-items: center; }
         .map-btn { color: var(--map); text-decoration: none; font-size: 0.85rem; font-weight: bold; }
-        .edit-btn { color: #aaa; font-size: 1rem; cursor: pointer; }
+        .edit-btn { color: #aaa; font-size: 1.1rem; cursor: pointer; }
         
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; }
         .modal-content { background: var(--card-bg); margin: 20px; padding: 20px; border-radius: 15px; }
@@ -77,8 +77,8 @@
 <div id="modal">
     <div class="modal-content">
         <h3><i class="fas fa-tachometer-alt"></i> 総走行統計</h3>
-        <div id="stats-area" style="line-height:2; background:var(--bg); padding:15px; border-radius:8px;"></div>
-        <button class="btn-save" onclick="toggleModal()">閉じる</button>
+        <div id="stats-area" style="line-height:2; background:var(--bg); padding:15px; border-radius:8px; font-size:0.9rem;"></div>
+        <button class="btn-save" onclick="toggleModal()" style="margin-top:15px;">閉じる</button>
     </div>
 </div>
 
@@ -97,8 +97,8 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 let currentCarIndex = 0;
-let carNames = JSON.parse(localStorage.getItem('carNames')) || ["車両名1", "車両名2", "車両名3", "車両名4", "車両名5"];
-const TOWER_H = 0.333; // 333m
+let carNames = JSON.parse(localStorage.getItem('carNames')) || ["マジェスティS", "車両2", "車両3", "車両4", "車両5"];
+const TOWER_H = 0.333; // 東京タワー 333m
 
 async function addRecord() {
     const d = parseFloat(document.getElementById('dist').value);
@@ -110,6 +110,7 @@ async function addRecord() {
 
     let loc = null;
     if(!editId) {
+        // 新規登録時のみGPS取得
         const pos = await new Promise(r => navigator.geolocation.getCurrentPosition(r, () => r(null), {timeout:5000}));
         if(pos) loc = {lat: pos.coords.latitude, lng: pos.coords.longitude};
     }
@@ -145,24 +146,22 @@ async function loadRecords() {
         let eff = "---";
         let towerStr = "";
         
-        // 【修正1】最新の記録(i=0)でも、一つ前の古い記録(i+1)があれば区間計算する
+        // 【修正】現在のデータ(i)と、一つ古いデータ(i+1)の差分で計算
         if(i < docs.length - 1) {
-            const nextOldData = docs[i+1].data();
-            const tripDist = d.dist - nextOldData.dist; // 今回の区間走行距離
+            const olderData = docs[i+1].data();
+            const tripDist = d.dist - olderData.dist; // 区間走行距離
             eff = (tripDist / d.fuel).toFixed(2);
             towerStr = `<span class="tower-text"><i class="fas fa-broadcast-tower"></i> 東京タワー ${(tripDist/TOWER_H).toFixed(1)} 本分</span>`;
-            
-            // 統計用の加算
-            totalFuelForEff += d.fuel;
+            totalFuelForEff += d.fuel; // 統計用（最初の給油を除外した合計燃料）
         }
 
         if (curM !== "" && curM !== mS) { html += renderMS(curM, mF, mP, mC); mF=0; mP=0; mC=""; }
         curM = mS; mF += d.fuel; mP += d.price;
         
-        if(i === 0) firstDist = d.dist;
-        lastDist = d.dist;
+        if(i === 0) firstDist = d.dist; // 最新の距離
+        lastDist = d.dist; // ループの最後で一番古い距離になる
 
-        // 【修正2】マップリンクURLを修正
+        // 【修正】GoogleマップのURL形式を修正
         let mapBtn = d.loc ? `<a class="map-btn" href="https://www.google.com/maps?q=${d.loc.lat},${d.loc.lng}" target="_blank"><i class="fas fa-map-marker-alt"></i> マップ</a>` : "";
 
         mC += `<div class="card">
@@ -186,9 +185,9 @@ async function loadRecords() {
     html += renderMS(curM, mF, mP, mC);
     listDiv.innerHTML = html;
 
-    // 【修正3】総走行距離に対する生涯燃費を正しく計算
+    // 【修正】生涯統計の計算
     const totalTripDist = firstDist - lastDist;
-    const lifetimeEff = totalFuelForEff > 0 ? (totalTripDist / totalFuelForEff).toFixed(2) : "0.00";
+    const lifetimeEff = totalFuelForEff > 0 ? (totalTripDist / totalFuelForEff).toFixed(2) : "---";
 
     document.getElementById('stats-area').innerHTML = `
         <b>生涯走行距離:</b> ${totalTripDist.toLocaleString()} km<br>
