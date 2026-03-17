@@ -3,21 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fuel-log v7.7</title>
+    <title>Fuel-log v7.8</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         :root {
             --bg: #f0f2f5; --card-bg: #ffffff; --header-bg: #d32f2f;
             --text-main: #333333; --text-sub: #666666; --accent: #ff5252;
             --month-bar: #ffebee; --month-text: #b71c1c; --border: #eeeeee;
-            --tower: #d32f2f; --map: #27ae60; --eff: #e67e22;
+            --tower: #d32f2f; --map: #27ae60; --eff: #e67e22; --chart-line: #3498db;
         }
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg: #121212; --card-bg: #1e1e1e; --header-bg: #000000; --text-main: #e0e0e0;
                 --text-sub: #aaaaaa; --month-bar: #2c1a1a; --month-text: #ff8a80; --border: #333333;
+                --chart-line: #5dade2;
             }
         }
         body { font-family: -apple-system, sans-serif; margin: 0; background: var(--bg); color: var(--text-main); padding-bottom: 50px; }
@@ -29,33 +30,29 @@
         .tab { padding: 12px 20px; white-space: nowrap; cursor: pointer; color: var(--text-sub); border-bottom: 3px solid transparent; }
         .tab.active { color: var(--accent); border-bottom: 3px solid var(--accent); font-weight: bold; }
         .month-header { background: var(--month-bar); padding: 10px 15px; border-left: 5px solid var(--tower); font-size: 0.8rem; color: var(--month-text); font-weight: bold; margin-top: 10px; }
-        
         .card { background: var(--card-bg); padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; }
         .card-left { flex: 1; padding-right: 10px; }
         .card-right { text-align: right; min-width: 110px; }
-        
         .date-row { font-weight: bold; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
         .tower-text { color: var(--tower); font-size: 0.85rem; font-weight: bold; display: block; margin: 2px 0; }
         .odometer { font-size: 0.75rem; color: var(--text-sub); }
         .fuel-info { font-size: 0.85rem; color: var(--text-main); margin-top: 4px; }
-        
         .eff-val { font-size: 1.4rem; font-weight: bold; color: var(--eff); line-height: 1; }
         .unit-label { font-size: 0.7rem; color: var(--eff); }
         .unit-price-tag { font-size: 0.75rem; color: var(--text-sub); margin-bottom: 4px; display: block; }
-        
         .action-row { margin-top: 15px; display: flex; justify-content: flex-end; gap: 20px; align-items: center; }
         .map-btn { color: var(--map); text-decoration: none; font-size: 0.85rem; font-weight: bold; }
         .edit-btn { color: #aaa; font-size: 1.1rem; cursor: pointer; }
-        
-        #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; }
-        .modal-content { background: var(--card-bg); margin: 20px; padding: 20px; border-radius: 15px; }
+        #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto; }
+        .modal-content { background: var(--card-bg); margin: 15px; padding: 20px; border-radius: 15px; }
+        #chart-container { width: 100%; margin: 15px 0; height: 200px; }
     </style>
 </head>
 <body>
 
 <header>
     <div id="current-car-display">読み込み中...</div>
-    <button onclick="toggleModal()" style="background:none; border:none; color:white; font-size: 1.4rem;"><i class="fas fa-chart-pie"></i></button>
+    <button onclick="toggleModal()" style="background:none; border:none; color:white; font-size: 1.4rem;"><i class="fas fa-chart-line"></i></button>
 </header>
 
 <div class="tab-bar" id="car-tabs"></div>
@@ -76,6 +73,11 @@
 
 <div id="modal">
     <div class="modal-content">
+        <h3><i class="fas fa-gas-pump"></i> ガソリン代推移</h3>
+        <div id="chart-container">
+            <canvas id="costChart"></canvas>
+        </div>
+        <hr style="border:0; border-top:1px solid var(--border);">
         <h3><i class="fas fa-tachometer-alt"></i> 総走行統計</h3>
         <div id="stats-area" style="line-height:2; background:var(--bg); padding:15px; border-radius:8px; font-size:0.9rem;"></div>
         <button class="btn-save" onclick="toggleModal()" style="margin-top:15px;">閉じる</button>
@@ -83,7 +85,6 @@
 </div>
 
 <script>
-// --- Firebase Config ---
 const firebaseConfig = {
     apiKey: "AIzaSyBP_FmmHPoTKJ0c73syYfJGcf88JMca_aI",
     authDomain: "fuel-consumption-log-102e0.firebaseapp.com",
@@ -99,6 +100,7 @@ const db = firebase.firestore();
 let currentCarIndex = 0;
 let carNames = JSON.parse(localStorage.getItem('carNames')) || ["マジェスティS", "車両2", "車両3", "車両4", "車両5"];
 const TOWER_H = 0.333; 
+let costChart = null;
 
 async function addRecord() {
     const d = parseFloat(document.getElementById('dist').value);
@@ -106,7 +108,7 @@ async function addRecord() {
     const p = parseFloat(document.getElementById('price').value);
     const m = document.getElementById('memo').value;
     const editId = document.getElementById('edit-id').value;
-    if(!d || !f || !p) return alert("数値を入力してください");
+    if(!d || !f || !p) return alert("入力不足です");
 
     let loc = null;
     if(!editId) {
@@ -130,37 +132,40 @@ async function loadRecords() {
     const snap = await db.collection("records").where("carId", "==", currentCarIndex).orderBy("date", "desc").get();
     let html = ""; let curM = ""; let mF = 0; let mP = 0; let mC = "";
     let totalFuelForEff = 0; let firstDist = 0; let lastDist = 0;
-    const docs = snap.docs;
+    
+    // グラフ用データ
+    let monthlyData = {}; 
 
-    if (docs.length === 0) {
+    if (snap.docs.length === 0) {
         listDiv.innerHTML = "<p style='text-align:center;padding:20px;'>記録がありません</p>";
         return;
     }
 
-    docs.forEach((doc, i) => {
+    snap.docs.forEach((doc, i) => {
         const d = doc.data();
         const dt = d.date ? d.date.toDate() : new Date();
         const mS = `${dt.getFullYear()}年${dt.getMonth()+1}月`;
+        const graphKey = `${dt.getFullYear()}/${dt.getMonth()+1}`;
         
+        // グラフ用集計
+        monthlyData[graphKey] = (monthlyData[graphKey] || 0) + d.price;
+
         let eff = "---";
         let towerStr = "";
-        
-        if(i < docs.length - 1) {
-            const olderData = docs[i+1].data();
+        if(i < snap.docs.length - 1) {
+            const olderData = snap.docs[i+1].data();
             const tripDist = d.dist - olderData.dist; 
             eff = (tripDist / d.fuel).toFixed(2);
-            // 本数の横に (〇〇km) を追加
             towerStr = `<span class="tower-text"><i class="fas fa-broadcast-tower"></i> 東京タワー ${(tripDist/TOWER_H).toFixed(1)} 本分 <span style="font-weight:normal; font-size:0.75rem;">(${tripDist.toFixed(1)}km)</span></span>`;
             totalFuelForEff += d.fuel;
         }
 
         if (curM !== "" && curM !== mS) { html += renderMS(curM, mF, mP, mC); mF=0; mP=0; mC=""; }
         curM = mS; mF += d.fuel; mP += d.price;
-        
         if(i === 0) firstDist = d.dist;
         lastDist = d.dist;
 
-        let mapBtn = d.loc ? `<a class="map-btn" href="https://www.google.com/maps?q=${d.loc.lat},${d.loc.lng}" target="_blank"><i class="fas fa-map-marker-alt"></i> マップ</a>` : "";
+        let mapBtn = d.loc ? `<a class="map-btn" href="http://www.google.com/maps?q=${d.loc.lat},${d.loc.lng}" target="_blank"><i class="fas fa-map-marker-alt"></i> マップ</a>` : "";
 
         mC += `<div class="card">
                 <div class="card-left">
@@ -185,22 +190,52 @@ async function loadRecords() {
 
     const totalTripDist = firstDist - lastDist;
     const lifetimeEff = totalFuelForEff > 0 ? (totalTripDist / totalFuelForEff).toFixed(2) : "---";
-
     document.getElementById('stats-area').innerHTML = `
         <b>生涯走行距離:</b> ${totalTripDist.toLocaleString()} km<br>
         <b>生涯平均燃費:</b> <span style="color:var(--eff); font-weight:bold;">${lifetimeEff} km/L</span><br>
         <b>タワー合計:</b> ${Math.floor(totalTripDist/TOWER_H).toLocaleString()} 本分
     `;
+    
+    // グラフの更新
+    updateChart(monthlyData);
+}
+
+function updateChart(dataObj) {
+    const ctx = document.getElementById('costChart').getContext('2d');
+    const labels = Object.keys(dataObj).reverse();
+    const values = Object.values(dataObj).reverse();
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+    if (costChart) costChart.destroy();
+    
+    costChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'ガソリン代 (円)',
+                data: values,
+                backgroundColor: isDark ? '#5dade2' : '#3498db',
+                borderRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, grid: { color: isDark ? '#333' : '#eee' }, ticks: { color: isDark ? '#aaa' : '#666' } },
+                x: { grid: { display: false }, ticks: { color: isDark ? '#aaa' : '#666' } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
 }
 
 function renderMS(t, f, p, c) { return `<div class="month-header">${t} (計 ${f.toFixed(1)}L / ¥${p.toLocaleString()})</div>${c}`; }
-function cancelEdit() { document.getElementById('edit-id').value=""; document.querySelectorAll('.form-box input').forEach(i => i.value=""); document.getElementById('btn-submit').innerText="記録を保存する"; document.getElementById('btn-cancel').style.display="none"; }
+function cancelEdit() { document.getElementById('edit-id').value=""; document.querySelectorAll('.form-box input').forEach(i => i.value=""); document.getElementById('btn-submit').innerText="保存"; document.getElementById('btn-cancel').style.display="none"; }
 function editMode(id, d, f, p, m) { document.getElementById('edit-id').value=id; document.getElementById('dist').value=d; document.getElementById('fuel').value=f; document.getElementById('price').value=p; document.getElementById('memo').value=m; document.getElementById('btn-submit').innerText="修正を保存"; document.getElementById('btn-cancel').style.display="block"; window.scrollTo(0,0); }
 function toggleModal() { const m = document.getElementById('modal'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; }
-function renderTabs() { 
-    document.getElementById('car-tabs').innerHTML = carNames.map((n, i) => `<div class="tab ${i===currentCarIndex?'active':''}" onclick="currentCarIndex=${i};renderTabs();loadRecords();">${n}</div>`).join(''); 
-    document.getElementById('current-car-display').innerText = carNames[currentCarIndex]; 
-}
+function renderTabs() { document.getElementById('car-tabs').innerHTML = carNames.map((n, i) => `<div class="tab ${i===currentCarIndex?'active':''}" onclick="currentCarIndex=${i};renderTabs();loadRecords();">${n}</div>`).join(''); document.getElementById('current-car-display').innerText = carNames[currentCarIndex]; }
 renderTabs(); loadRecords();
 </script>
 </body>
