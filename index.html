@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fuel-log v7.3</title>
+    <title>Fuel-log v7.4</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -30,10 +30,9 @@
         .tab.active { color: var(--accent); border-bottom: 3px solid var(--accent); font-weight: bold; }
         .month-header { background: var(--month-bar); padding: 10px 15px; border-left: 5px solid var(--tower); font-size: 0.8rem; color: var(--month-text); font-weight: bold; margin-top: 10px; }
         
-        /* カードデザインの修正 */
-        .card { background: var(--card-bg); padding: 15px; border-bottom: 1px solid var(--border); position: relative; display: flex; justify-content: space-between; align-items: flex-start; }
+        .card { background: var(--card-bg); padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; }
         .card-left { flex: 1; }
-        .card-right { text-align: right; min-width: 100px; }
+        .card-right { text-align: right; min-width: 110px; }
         
         .date-row { font-weight: bold; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
         .tower-text { color: var(--tower); font-size: 0.85rem; font-weight: bold; display: block; margin: 2px 0; }
@@ -42,11 +41,11 @@
         
         .eff-val { font-size: 1.4rem; font-weight: bold; color: var(--eff); line-height: 1; }
         .unit-label { font-size: 0.7rem; color: var(--eff); }
-        .unit-price-tag { font-size: 0.75rem; color: var(--text-sub); margin-bottom: 8px; display: block; }
+        .unit-price-tag { font-size: 0.75rem; color: var(--text-sub); margin-bottom: 4px; display: block; }
         
-        .action-row { margin-top: 10px; display: flex; justify-content: flex-end; gap: 15px; }
+        .action-row { margin-top: 12px; display: flex; justify-content: flex-end; gap: 15px; align-items: center; }
         .map-btn { color: var(--map); text-decoration: none; font-size: 0.85rem; font-weight: bold; }
-        .edit-btn { color: #aaa; font-size: 1rem; }
+        .edit-btn { color: #aaa; font-size: 1rem; cursor: pointer; }
         
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; }
         .modal-content { background: var(--card-bg); margin: 20px; padding: 20px; border-radius: 15px; }
@@ -78,12 +77,13 @@
 <div id="modal">
     <div class="modal-content">
         <h3><i class="fas fa-tachometer-alt"></i> 総走行統計</h3>
-        <div id="stats-area" style="line-height:2;"></div>
+        <div id="stats-area" style="line-height:2; background:var(--bg); padding:15px; border-radius:8px;"></div>
         <button class="btn-save" onclick="toggleModal()">閉じる</button>
     </div>
 </div>
 
 <script>
+// --- Firebase Config ---
 const firebaseConfig = {
     apiKey: "AIzaSyBP_FmmHPoTKJ0c73syYfJGcf88JMca_aI",
     authDomain: "fuel-consumption-log-102e0.firebaseapp.com",
@@ -97,8 +97,8 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 let currentCarIndex = 0;
-let carNames = JSON.parse(localStorage.getItem('carNames')) || ["車両1", "車両2", "車両3", "車両4", "車両5"];
-const TOWER_H = 0.333;
+let carNames = JSON.parse(localStorage.getItem('carNames')) || ["車両名1", "車両名2", "車両名3", "車両名4", "車両名5"];
+const TOWER_H = 0.333; // 333m
 
 async function addRecord() {
     const d = parseFloat(document.getElementById('dist').value);
@@ -108,8 +108,11 @@ async function addRecord() {
     const editId = document.getElementById('edit-id').value;
     if(!d || !f || !p) return alert("数値を入力してください");
 
-    const pos = await new Promise(r => navigator.geolocation.getCurrentPosition(r, () => r(null), {timeout:5000}));
-    let loc = pos ? {lat: pos.coords.latitude, lng: pos.coords.longitude} : null;
+    let loc = null;
+    if(!editId) {
+        const pos = await new Promise(r => navigator.geolocation.getCurrentPosition(r, () => r(null), {timeout:5000}));
+        if(pos) loc = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+    }
 
     if(editId) {
         await db.collection("records").doc(editId).update({ dist: d, fuel: f, price: p, memo: m });
@@ -126,8 +129,13 @@ async function loadRecords() {
     const listDiv = document.getElementById('list-container');
     const snap = await db.collection("records").where("carId", "==", currentCarIndex).orderBy("date", "desc").get();
     let html = ""; let curM = ""; let mF = 0; let mP = 0; let mC = "";
-    let tF = 0; let tP = 0; let firstD = 0; let lastD = 0;
+    let totalFuelForEff = 0; let firstDist = 0; let lastDist = 0;
     const docs = snap.docs;
+
+    if (docs.length === 0) {
+        listDiv.innerHTML = "<p style='text-align:center;padding:20px;'>記録がありません</p>";
+        return;
+    }
 
     docs.forEach((doc, i) => {
         const d = doc.data();
@@ -136,16 +144,25 @@ async function loadRecords() {
         
         let eff = "---";
         let towerStr = "";
+        
+        // 【修正1】最新の記録(i=0)でも、一つ前の古い記録(i+1)があれば区間計算する
         if(i < docs.length - 1) {
-            const diff = d.dist - docs[i+1].data().dist;
-            eff = (diff / d.fuel).toFixed(2);
-            towerStr = `<span class="tower-text"><i class="fas fa-broadcast-tower"></i> 東京タワー ${(diff/TOWER_H).toFixed(1)} 本分走った！</span>`;
+            const nextOldData = docs[i+1].data();
+            const tripDist = d.dist - nextOldData.dist; // 今回の区間走行距離
+            eff = (tripDist / d.fuel).toFixed(2);
+            towerStr = `<span class="tower-text"><i class="fas fa-broadcast-tower"></i> 東京タワー ${(tripDist/TOWER_H).toFixed(1)} 本分</span>`;
+            
+            // 統計用の加算
+            totalFuelForEff += d.fuel;
         }
 
         if (curM !== "" && curM !== mS) { html += renderMS(curM, mF, mP, mC); mF=0; mP=0; mC=""; }
-        curM = mS; mF += d.fuel; mP += d.price; tF += d.fuel; tP += d.price;
-        if(i === 0) firstD = d.dist; lastD = d.dist;
+        curM = mS; mF += d.fuel; mP += d.price;
+        
+        if(i === 0) firstDist = d.dist;
+        lastDist = d.dist;
 
+        // 【修正2】マップリンクURLを修正
         let mapBtn = d.loc ? `<a class="map-btn" href="https://www.google.com/maps?q=${d.loc.lat},${d.loc.lng}" target="_blank"><i class="fas fa-map-marker-alt"></i> マップ</a>` : "";
 
         mC += `<div class="card">
@@ -168,11 +185,20 @@ async function loadRecords() {
     });
     html += renderMS(curM, mF, mP, mC);
     listDiv.innerHTML = html;
-    document.getElementById('stats-area').innerHTML = `生涯走行: ${(firstD-lastD).toLocaleString()} km<br>タワー合計: ${((firstD-lastD)/TOWER_H).toFixed(0).toLocaleString()} 本分`;
+
+    // 【修正3】総走行距離に対する生涯燃費を正しく計算
+    const totalTripDist = firstDist - lastDist;
+    const lifetimeEff = totalFuelForEff > 0 ? (totalTripDist / totalFuelForEff).toFixed(2) : "0.00";
+
+    document.getElementById('stats-area').innerHTML = `
+        <b>生涯走行距離:</b> ${totalTripDist.toLocaleString()} km<br>
+        <b>生涯平均燃費:</b> <span style="color:var(--eff); font-weight:bold;">${lifetimeEff} km/L</span><br>
+        <b>タワー合計:</b> ${Math.floor(totalTripDist/TOWER_H).toLocaleString()} 本分
+    `;
 }
 
 function renderMS(t, f, p, c) { return `<div class="month-header">${t} (計 ${f.toFixed(1)}L / ¥${p.toLocaleString()})</div>${c}`; }
-function cancelEdit() { document.getElementById('edit-id').value=""; document.querySelectorAll('.form-box input').forEach(i => i.value=""); document.getElementById('btn-submit').innerText="保存"; document.getElementById('btn-cancel').style.display="none"; }
+function cancelEdit() { document.getElementById('edit-id').value=""; document.querySelectorAll('.form-box input').forEach(i => i.value=""); document.getElementById('btn-submit').innerText="記録を保存する"; document.getElementById('btn-cancel').style.display="none"; }
 function editMode(id, d, f, p, m) { document.getElementById('edit-id').value=id; document.getElementById('dist').value=d; document.getElementById('fuel').value=f; document.getElementById('price').value=p; document.getElementById('memo').value=m; document.getElementById('btn-submit').innerText="修正を保存"; document.getElementById('btn-cancel').style.display="block"; window.scrollTo(0,0); }
 function toggleModal() { const m = document.getElementById('modal'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; }
 function renderTabs() { document.getElementById('car-tabs').innerHTML = carNames.map((n, i) => `<div class="tab ${i===currentCarIndex?'active':''}" onclick="currentCarIndex=${i};renderTabs();loadRecords();">${n}</div>`).join(''); document.getElementById('current-car-display').innerText = carNames[currentCarIndex]; }
