@@ -3,20 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fuel-log v7.1 - Adventure Edition</title>
+    <title>Fuel-log v7.2 - Tokyo Tower Edition</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         :root {
-            --bg: #f0f2f5; --card-bg: #ffffff; --header-bg: #2c3e50; --text-main: #333333;
-            --text-sub: #666666; --accent: #3498db; --month-bar: #e3f2fd; --month-text: #01579b;
-            --border: #eeeeee; --input-bg: #ffffff; --warn: #e74c3c; --map: #27ae60; --eff: #e67e22; --globe: #2980b9;
+            --bg: #f0f2f5; --card-bg: #ffffff; --header-bg: #d32f2f; /* タワーレッド */
+            --text-main: #333333; --text-sub: #666666; --accent: #ff5252;
+            --month-bar: #ffebee; --month-text: #b71c1c; --border: #eeeeee;
+            --input-bg: #ffffff; --warn: #e74c3c; --map: #27ae60; --eff: #e67e22; --tower: #d32f2f;
         }
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg: #121212; --card-bg: #1e1e1e; --header-bg: #000000; --text-main: #e0e0e0;
-                --text-sub: #aaaaaa; --accent: #3498db; --month-bar: #1a2733; --month-text: #90caf9;
+                --text-sub: #aaaaaa; --accent: #ff5252; --month-bar: #2c1a1a; --month-text: #ff8a80;
                 --border: #333333; --input-bg: #2c2c2c;
             }
         }
@@ -24,15 +25,16 @@
         header { background: var(--header-bg); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
         .form-box { background: var(--card-bg); margin: 10px; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
         .form-box input { width: 100%; padding: 12px; margin: 5px 0; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; font-size: 16px; background: var(--input-bg); color: var(--text-main); }
-        .btn-save { background: var(--accent); color: white; border: none; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; margin-top: 10px; }
+        .btn-save { background: var(--header-bg); color: white; border: none; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; margin-top: 10px; }
         .tab-bar { display: flex; overflow-x: auto; background: var(--card-bg); border-bottom: 1px solid var(--border); }
         .tab { padding: 12px 20px; white-space: nowrap; cursor: pointer; color: var(--text-sub); border-bottom: 3px solid transparent; }
         .tab.active { color: var(--accent); border-bottom: 3px solid var(--accent); font-weight: bold; }
-        .month-header { background: var(--month-bar); padding: 10px 15px; border-left: 5px solid var(--accent); font-size: 0.8rem; display: flex; flex-direction: column; margin-top: 15px; font-weight: bold; color: var(--month-text); }
+        .month-header { background: var(--month-bar); padding: 10px 15px; border-left: 5px solid var(--tower); font-size: 0.8rem; display: flex; flex-direction: column; margin-top: 15px; font-weight: bold; color: var(--month-text); }
         .card { background: var(--card-bg); padding: 15px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
         .card .date { grid-column: 1/3; font-weight: bold; color: var(--text-main); display: flex; justify-content: space-between; }
         .card .eff { text-align: right; color: var(--eff); font-weight: bold; font-size: 1.2rem; }
-        .earth-badge { grid-column: 1/3; font-size: 0.75rem; color: var(--globe); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+        .tower-badge { grid-column: 1/3; font-size: 0.75rem; color: var(--tower); margin-top: 4px; display: flex; align-items: center; gap: 4px; font-weight: bold; }
+        .map-link { color: var(--map); text-decoration: none; font-size: 0.75rem; font-weight: bold; }
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto; }
         .modal-content { background: var(--card-bg); margin: 20px; padding: 20px; border-radius: 15px; }
     </style>
@@ -41,7 +43,7 @@
 
 <header>
     <div id="current-car-display">読み込み中...</div>
-    <button onclick="toggleModal()" style="background:none; border:none; color:white; font-size: 1.4rem;"><i class="fas fa-globe-americas"></i></button>
+    <button onclick="toggleModal()" style="background:none; border:none; color:white; font-size: 1.4rem;"><i class="fas fa-broadcast-tower"></i></button>
 </header>
 
 <div class="tab-bar" id="car-tabs"></div>
@@ -62,7 +64,7 @@
 
 <div id="modal">
     <div class="modal-content">
-        <h3><i class="fas fa-chart-line"></i> 冒険の記録</h3>
+        <h3><i class="fas fa-chart-line"></i> 走行統計</h3>
         <div id="stats-area" style="background:var(--bg); padding:15px; border-radius:8px; font-size:0.9rem; line-height:1.8;"></div>
         <hr>
         <button class="btn-save" onclick="toggleModal()">閉じる</button>
@@ -70,7 +72,7 @@
 </div>
 
 <script>
-// --- Firebase Config（修正済み） ---
+// --- Firebase Config ---
 const firebaseConfig = {
     apiKey: "AIzaSyBP_FmmHPoTKJ0c73syYfJGcf88JMca_aI",
     authDomain: "fuel-consumption-log-102e0.firebaseapp.com",
@@ -85,13 +87,19 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 let currentCarIndex = 0;
-let carNames = JSON.parse(localStorage.getItem('carNames')) || ["車両名1", "車両名2", "車両名3", "車両名4", "車両名5"];
-const EARTH_KM = 40075; // 地球一周
+let carNames = JSON.parse(localStorage.getItem('carNames')) || ["車両1", "車両2", "車両3", "車両4", "車両5"];
+const TOWER_H = 0.333; // 東京タワーの高さ(km)
 
-// 初期化関数を明示的に呼び出す形に整理
 function init() {
     renderTabs();
     loadRecords();
+}
+
+// 位置情報を取得する関数
+function getPosition() {
+    return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), {timeout: 6000});
+    });
 }
 
 async function addRecord() {
@@ -104,17 +112,24 @@ async function addRecord() {
 
     try {
         if(editId) {
+            // 修正時は位置情報を更新しない
             await db.collection("records").doc(editId).update({ dist: d, fuel: f, price: p, memo: m });
         } else {
+            // 新規登録時のみ位置情報を取得
+            const pos = await getPosition();
+            let loc = null;
+            if(pos) loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+
             await db.collection("records").add({
                 carId: currentCarIndex, dist: d, fuel: f, price: p, memo: m,
+                loc: loc,
                 date: firebase.firestore.FieldValue.serverTimestamp()
             });
         }
         cancelEdit();
         loadRecords();
     } catch (e) {
-        alert("エラーが発生しました: " + e.message);
+        alert("エラー: " + e.message);
     }
 }
 
@@ -127,8 +142,7 @@ async function loadRecords() {
         const docs = snap.docs;
 
         if (docs.length === 0) {
-            listDiv.innerHTML = "<p style='text-align:center;padding:20px;'>記録がありません</p>";
-            document.getElementById('stats-area').innerHTML = "冒険を始めましょう！";
+            listDiv.innerHTML = "<p style='text-align:center;padding:20px;'>記録なし</p>";
             return;
         }
 
@@ -138,11 +152,11 @@ async function loadRecords() {
             const mS = `${dt.getFullYear()}年${dt.getMonth()+1}月`;
             
             let eff = "---";
-            let lapInfo = "";
+            let towerInfo = "";
             if(i < docs.length - 1) {
                 const diff = d.dist - docs[i+1].data().dist;
                 eff = (diff / d.fuel).toFixed(2);
-                lapInfo = `<div class="earth-badge"><i class="fas fa-globe"></i> この区間: 地球 ${(diff/EARTH_KM).toFixed(5)} 周分</div>`;
+                towerInfo = `<div class="tower-badge"><i class="fas fa-broadcast-tower"></i> 東京タワー ${(diff/TOWER_H).toFixed(1)} 本分</div>`;
             }
 
             if (curM !== "" && curM !== mS) { html += renderMS(curM, mF, mP, mC); mF = 0; mP = 0; mC = ""; }
@@ -150,12 +164,20 @@ async function loadRecords() {
             if(i === 0) maxD = d.dist;
             minD = d.dist;
 
+            let mapBtn = d.loc ? `<a class="map-link" href="https://www.google.com/maps?q=${d.loc.lat},${d.loc.lng}" target="_blank"><i class="fas fa-map-marker-alt"></i> マップ</a>` : "";
+
             mC += `<div class="card">
                     <div class="date">${dt.getMonth()+1}/${dt.getDate()} <span>${Math.round(d.price/d.fuel)}円/L</span></div>
-                    ${lapInfo}
-                    <div style="grid-column:1/3;font-size:0.8rem;color:var(--text-sub);">累計: ${d.dist.toLocaleString()} km</div>
-                    <div>${d.fuel}L / ¥${d.price.toLocaleString()}</div>
-                    <div class="eff">${eff} <small style="font-size:0.6rem;">km/L</small></div>
+                    ${towerInfo}
+                    <div style="grid-column:1/3;font-size:0.8rem;color:var(--text-sub);">累計: ${d.dist.toLocaleString()} km </div>
+                    <div style="grid-column:1/3; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:0.85rem;">${d.fuel}L / ¥${d.price.toLocaleString()}</span>
+                        <div class="actions" style="display:flex; gap:10px; color:#aaa;">
+                            ${mapBtn}
+                            <i class="fas fa-edit" onclick="editMode('${doc.id}',${d.dist},${d.fuel},${d.price},'${d.memo||''}')"></i>
+                        </div>
+                    </div>
+                    <div class="eff" style="grid-column:2/3; margin-top:-20px;">${eff} <small style="font-size:0.6rem;">km/L</small></div>
                   </div>`;
         });
         html += renderMS(curM, mF, mP, mC);
@@ -164,24 +186,23 @@ async function loadRecords() {
         const totalDist = maxD - minD;
         document.getElementById('stats-area').innerHTML = `
             <b>生涯走行距離:</b> ${totalDist.toLocaleString()} km<br>
-            <b>地球周回数:</b> <span style="color:var(--globe)">${(totalDist/EARTH_KM).toFixed(4)} 周分</span><br>
+            <b>タワー合計本数:</b> <span style="color:var(--tower)">${(totalDist/TOWER_H).toFixed(0).toLocaleString()} 本分</span><br>
             <b>生涯平均燃費:</b> ${(tF>0?(totalDist/tF).toFixed(2):0)} km/L
         `;
     } catch (e) {
-        listDiv.innerHTML = "データの読み込みに失敗しました。Firestoreのインデックス設定を確認してください。";
-        console.error(e);
+        listDiv.innerHTML = "読込エラー。Firebaseのインデックス等を確認してください。";
     }
 }
 
 function renderMS(t, f, p, c) { return `<div class="month-header">${t} <div>¥${p.toLocaleString()} / ${f.toFixed(1)}L</div></div>${c}`; }
 function cancelEdit() { document.getElementById('edit-id').value = ""; document.querySelectorAll('.form-box input').forEach(i => i.value=""); document.getElementById('btn-submit').innerText="記録を保存する"; document.getElementById('btn-cancel').style.display="none"; }
+function editMode(id, d, f, p, m) { document.getElementById('edit-id').value = id; document.getElementById('dist').value = d; document.getElementById('fuel').value = f; document.getElementById('price').value = p; document.getElementById('memo').value = m; document.getElementById('btn-submit').innerText="修正を保存"; document.getElementById('btn-cancel').style.display="block"; window.scrollTo(0,0); }
 function toggleModal() { const m = document.getElementById('modal'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; }
 function renderTabs() { 
     document.getElementById('car-tabs').innerHTML = carNames.map((n, i) => `<div class="tab ${i===currentCarIndex?'active':''}" onclick="currentCarIndex=${i};renderTabs();loadRecords();">${n}</div>`).join(''); 
     document.getElementById('current-car-display').innerText = carNames[currentCarIndex]; 
 }
 
-// 実行
 init();
 </script>
 </body>
